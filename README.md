@@ -339,14 +339,23 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 
 ### ⚠️ Cron chưa được kiểm chứng là có bắn
 
-Lịch đã đăng ký (xác nhận qua API Cloudflare), script deploy có export `scheduled`,
-binding đúng, và công việc bên trong chạy chính xác khi gọi tay. Nhưng qua **bốn** mốc
-15 phút liên tiếp không có nhịp tim nào được ghi.
+Qua **sáu** mốc 15 phút liên tiếp không có nhịp tim nào được ghi. Những giả thuyết sau
+đã bị loại trừ bằng thực nghiệm, không phải bằng suy đoán:
+
+| Đã kiểm chứng | Kết quả |
+|---|---|
+| Lịch có được đăng ký không | Có — API Cloudflare trả về `*/15 * * * *`, tạo lúc 14:23 |
+| Script deploy có export `scheduled` không | Có — đọc mã nguồn đã deploy qua API |
+| Binding D1/Vectorize/AI có đúng không | Có — API xác nhận đủ ba |
+| Công việc bên trong có chạy được không | Có — gọi tay `/api/admin/cron` quét sạch đúng |
+| Có phải do chặng HTTP sang app Pages không | Không — bỏ hẳn chặng đó, vẫn không bắn |
+| Có phải do `ctx.waitUntil` trong `scheduled()` không | Không — đổi sang `await` thẳng, vẫn không bắn |
+| Có phải do worker không có route nào không | Không — bật `workers_dev`, mốc kế tiếp vẫn trượt |
 
 Không chẩn đoán thêm được từ môi trường dựng dự án này: `wrangler tail` bị policy egress
 chặn (`tail.developers.workers.dev`), truy vấn Workers Observability và GraphQL analytics
 đều trả rỗng vì API token thiếu quyền đọc, và `*.workers.dev` cũng bị chặn nên không gọi
-tay worker được.
+tay worker được. Nguyên nhân nằm ngoài code và ngoài cấu hình trong repo này.
 
 **Cách bạn kiểm tra trên máy mình:**
 
