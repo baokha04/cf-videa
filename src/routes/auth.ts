@@ -11,7 +11,8 @@ import {
   revokeSession,
   sweepExpiredSessions,
 } from '../auth/session';
-import { enforce, LIMITS, reset } from '../auth/ratelimit';
+import { enforce, LIMITS, reset, sweepRateLimits } from '../auth/ratelimit';
+import { drainVectorGc } from '../vec/sync';
 import { checkPassword, normalizeEmail, normText } from '../util/validate';
 import type { SessionUser } from '../types';
 
@@ -94,9 +95,22 @@ export async function login(c: Ctx): Promise<Response> {
   });
   setSessionCookie(c, token);
 
-  // Pages không có cron: dọn phiên hết hạn theo kiểu cơ hội, ngoài luồng phản hồi.
+  // Pages Functions không có cron trigger. Việc định kỳ do Worker trong cron-worker/
+  // đảm nhiệm — nhưng ứng dụng KHÔNG ĐƯỢC phụ thuộc vào việc worker đó còn sống.
+  // Một cron chết mà không có lớp này nghĩa là ba bảng phình ra vô hạn: phiên hết
+  // hạn, bộ đếm rate limit của các cửa sổ đã qua, và hàng đợi vector mồ côi.
+  //
+  // Nên dọn thêm theo kiểu cơ hội, trên khoảng 5% số lần đăng nhập, chạy ngoài luồng
+  // phản hồi qua waitUntil. Rẻ, không cần lịch, và giữ cho hệ thống tự bảo trì được
+  // ngay cả khi cron im lặng chết. /api/health vẫn báo cron_stale để biết điều đó.
   if (Math.random() < 0.05) {
-    c.executionCtx.waitUntil(sweepExpiredSessions(c.env).then(() => undefined));
+    c.executionCtx.waitUntil(
+      Promise.allSettled([
+        sweepExpiredSessions(c.env),
+        sweepRateLimits(c.env),
+        drainVectorGc(c.env, 50),
+      ]).then(() => undefined),
+    );
   }
   return c.json({ user: userDto(user) });
 }

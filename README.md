@@ -335,7 +335,33 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 |---|---|
 | Production | https://cf-videa.pages.dev — `env: production`, D1 `videa-db`, index `videa-ideas` |
 | Preview (nhánh này) | https://claude-account-management-sh.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
-| Cron | Worker `cf-videa-cron`, lịch `*/15 * * * *`, không route công khai, dùng chung D1 + Vectorize với production |
+| Cron | Worker `cf-videa-cron`, lịch `*/15 * * * *`, không route công khai, dùng chung D1 + Vectorize với production. **Chưa quan sát được nó bắn — xem bên dưới.** |
+
+### ⚠️ Cron chưa được kiểm chứng là có bắn
+
+Lịch đã đăng ký (xác nhận qua API Cloudflare), script deploy có export `scheduled`,
+binding đúng, và công việc bên trong chạy chính xác khi gọi tay. Nhưng qua **bốn** mốc
+15 phút liên tiếp không có nhịp tim nào được ghi.
+
+Không chẩn đoán thêm được từ môi trường dựng dự án này: `wrangler tail` bị policy egress
+chặn (`tail.developers.workers.dev`), truy vấn Workers Observability và GraphQL analytics
+đều trả rỗng vì API token thiếu quyền đọc, và `*.workers.dev` cũng bị chặn nên không gọi
+tay worker được.
+
+**Cách bạn kiểm tra trên máy mình:**
+
+```bash
+curl -s https://cf-videa.pages.dev/api/health | jq '{cron_last_run_at, cron_stale}'
+cd cron-worker && npx wrangler tail          # log thật, chạy được trên máy bạn
+```
+
+Nếu `cron_stale` vẫn là `"chưa từng chạy"` sau một giờ, xem tab Cron Triggers của worker
+`cf-videa-cron` trên dashboard Cloudflare — nó hiển thị lịch sử từng lần chạy.
+
+**Trong lúc đó ứng dụng vẫn tự bảo trì được.** Không có việc định kỳ nào chỉ dựa vào
+cron: dọn phiên hết hạn, dọn bộ đếm rate limit và rút hàng đợi vector mồ côi đều chạy
+thêm theo kiểu cơ hội trên khoảng 5% số lần đăng nhập (ngoài luồng phản hồi), còn đối
+soát index có nút "Đồng bộ lại index" trong giao diện. Cron chỉ làm việc đó đều đặn hơn.
 
 Cả hai D1 và cả hai Vectorize index đã được dọn sạch dữ liệu kiểm thử; index có đủ 4
 metadata index và chưa có vector nào, nên tài khoản đầu tiên bạn tạo sẽ được index đúng.
