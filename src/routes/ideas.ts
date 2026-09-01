@@ -6,7 +6,7 @@ import * as likesDb from '../db/likes';
 import { setIdeaTags, tagsForIdeas } from '../db/tags';
 import { buildEmbedText, contentHash } from '../vec/embeddings';
 import { deleteIdeaVectors, queueGc } from '../vec/index';
-import { indexIdea } from '../vec/sync';
+import { indexIdea, refreshVectorMetadata } from '../vec/sync';
 import { invalidateTasteVector } from '../vec/profile';
 import {
   IDEA_STATUSES,
@@ -155,10 +155,28 @@ export async function updateIdea(c: Ctx): Promise<Response> {
   const fresh = await ideasDb.getById(c.env, user.id, id);
   if (!fresh) throw notFound('Không tìm thấy ý tưởng.');
 
-  // Nội dung không đổi (ví dụ chỉ đổi status) thì không cần embed lại — nhưng
-  // metadata của vector thì có, nên vẫn upsert lại khi hash trùng mà status khác.
+  // Ba trường hợp, và trường hợp giữa là chỗ dễ bỏ sót nhất:
+  //
+  //  1. Nội dung đổi  → embed lại (upsert kèm metadata mới luôn).
+  //  2. Chỉ metadata đổi (đổi mỗi status) → content_hash KHÔNG đổi, nên nếu chỉ
+  //     nhìn hash thì sẽ bỏ qua và metadata trên Vectorize mốc lại ở giá trị cũ,
+  //     khiến /api/search?status=… lọc sai và gợi ý kéo về ý tưởng đã publish.
+  //     Dùng lại vector đã lưu, chỉ ghi đè metadata — không tốn lời gọi AI nào.
+  //  3. Không đổi gì ảnh hưởng index → không làm gì.
   const needsEmbed = fresh.embedded_hash !== hash;
-  const indexed = needsEmbed ? await indexIdea(c.env, fresh, tags) : true;
+  const metadataChanged =
+    existing.status !== fresh.status || existing.visibility !== fresh.visibility;
+
+  let indexed: boolean;
+  if (needsEmbed) {
+    indexed = await indexIdea(c.env, fresh, tags);
+  } else if (metadataChanged) {
+    // Chưa có vector để cập nhật thì lùi về đường đầy đủ.
+    indexed =
+      (await refreshVectorMetadata(c.env, fresh)) || (await indexIdea(c.env, fresh, tags));
+  } else {
+    indexed = true;
+  }
 
   const [dto] = await hydrate(c, user.id, [fresh]);
   return c.json({ idea: dto, indexed });

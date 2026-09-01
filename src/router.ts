@@ -18,8 +18,8 @@ import * as admin from './routes/admin';
  */
 const app = new Hono<{ Bindings: Env; Variables: Variables }>().basePath('/api');
 
-// Lỗi luôn ra JSON, không bao giờ lộ chi tiết nội bộ.
-app.onError((err) => errorResponse(err));
+// Lỗi luôn ra JSON. Chi tiết chỉ đính kèm ở dev/preview, không bao giờ ở production.
+app.onError((err, c) => errorResponse(err, c.env.APP_ENV));
 app.notFound(() =>
   new Response(
     JSON.stringify({ error: { code: 'not_found', message: 'Không tìm thấy endpoint.' } }),
@@ -84,6 +84,6 @@ app.get('/tags', ideas.listTagsRoute);
 app.post('/reindex', admin.reindexMine);
 
 app.post('/admin/reindex', admin.reindexAdmin);
-app.post('/admin/cron', admin.cron);
+app.post('/admin/maintenance', admin.maintenance);
 
 export default app;

@@ -13,7 +13,7 @@
   // Pages KHÔNG kế thừa binding xuống env — mỗi env phải khai báo lại đầy đủ.
   // ---------------------------------------------------------------------------
   "d1_databases": [
-    { "binding": "DB", "database_name": "videa-db", "database_id": "PLACEHOLDER_DEV" }
+    { "binding": "DB", "database_name": "videa-db", "database_id": "77f7536b-884b-40d9-9866-0875cdcaa9ec" }
   ],
   // Vectorize và Workers AI KHÔNG có giả lập local — không có cách nào chạy chúng
   // trong workerd trên máy bạn. Có hai chế độ dev, chọn bằng .dev.vars:
@@ -41,7 +41,7 @@
       "compatibility_date": "2026-08-01",
       "compatibility_flags": [],
       "d1_databases": [
-        { "binding": "DB", "database_name": "videa-db-preview", "database_id": "PLACEHOLDER_PREVIEW" }
+        { "binding": "DB", "database_name": "videa-db-preview", "database_id": "b7cb0595-3289-4676-8307-fb6cd0bd7669" }
       ],
       "vectorize": [{ "binding": "VEC", "index_name": "videa-ideas-preview" }],
       "ai": { "binding": "AI" },
@@ -55,7 +55,7 @@
       "compatibility_date": "2026-08-01",
       "compatibility_flags": [],
       "d1_databases": [
-        { "binding": "DB", "database_name": "videa-db", "database_id": "PLACEHOLDER_PROD" }
+        { "binding": "DB", "database_name": "videa-db", "database_id": "77f7536b-884b-40d9-9866-0875cdcaa9ec" }
       ],
       "vectorize": [{ "binding": "VEC", "index_name": "videa-ideas" }],
       "ai": { "binding": "AI" },

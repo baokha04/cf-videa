@@ -11,30 +11,58 @@ trạng thái), tìm được **theo ý nghĩa** chứ không chỉ theo từ kh
 
 ---
 
-## Hai điều phải quyết trước khi chạy thật
+## Ba ràng buộc thật của nền tảng, đo trên deployment thật
 
-### 1. Cần gói Workers Paid
+### 1. Băm mật khẩu bị siết từ hai phía, và kết quả yếu hơn khuyến nghị
 
-Băm mật khẩu dùng PBKDF2-HMAC-SHA256 210.000 vòng (khuyến nghị OWASP). Số đo thực tế
-(`node scripts/bench-pbkdf2.mjs`):
+**(a) workerd chặn cứng số vòng PBKDF2 ở 100.000.** Vượt qua ném thẳng
+`NotSupportedError: Pbkdf2 failed: iteration counts above 100000 are not supported`.
+Không phải giới hạn theo gói — nâng gói cũng không gỡ được.
 
-| Số vòng | CPU mỗi lần băm |
-|---:|---:|
-| 50.000 | ~9 ms |
-| 100.000 | ~18 ms |
-| **210.000** | **~37 ms** ← mức đang dùng |
-| 600.000 | ~106 ms |
+**(b) Gói Workers Free giới hạn ~10ms CPU mỗi request**, và PBKDF2 là CPU thuần.
+Vượt qua thì Cloudflare ngắt bằng `Error 1102: Worker exceeded resource limits`.
 
-Workers/Pages tính **CPU time**. Mức này nằm gọn trong hạn mức 30 giây của gói Paid, nhưng
-vượt xa hạn mức 10 ms của gói Free — trên Free thì ngay cả 50.000 vòng cũng đã sát trần và
-đăng nhập sẽ bị ngắt giữa chừng.
+Cái bẫy của (b): **nó không hỏng ngay từ request đầu.** Bản dùng SHA-512 100.000 vòng
+(66ms) chạy trót lọt 18–21 lần đăng nhập liên tiếp rồi mới bung 1102. Kiểm thử lẻ tẻ
+hoàn toàn không phát hiện được — chỉ tải liên tục mới lộ ra. Số đo:
 
-Không có cách nào làm một hàm băm mật khẩu đúng chuẩn mà rẻ; đó chính là mục đích của nó.
-Nếu buộc phải chạy Free, hạ `PBKDF2_ITERATIONS` trong `src/auth/password.ts` và ghi rõ đánh
-đổi — nhưng **đừng** thay bằng SHA-256 trần. Số vòng được nhúng vào từng chuỗi hash nên nâng
-lại sau này không cần migration: đăng nhập thành công với hash cũ sẽ tự băm lại.
+| Hàm băm | 20.000 | 30.000 | 50.000 | 100.000 |
+|---|---:|---:|---:|---:|
+| SHA-256 | 4 ms | **7 ms** ← đang dùng | 12 ms ✗ | 18 ms ✗ |
+| SHA-512 | 12 ms ✗ | 18 ms ✗ | 30 ms ✗ | 66 ms ✗ |
 
-### 2. "Gợi ý" hiện chỉ khơi lại ý tưởng của chính bạn
+✗ = vượt ngân sách CPU của gói Free.
+
+Cấu hình hiện tại: **PBKDF2-HMAC-SHA256, 30.000 vòng**.
+
+**Nói thẳng về mức bảo vệ:** OWASP khuyến nghị 600.000 vòng cho PBKDF2-HMAC-SHA256.
+Cấu hình này thấp hơn khoảng **20 lần**. Đây là lựa chọn có ý thức để ở lại gói Free,
+không phải sơ suất. Mật khẩu vẫn có salt ngẫu nhiên riêng và vẫn được kéo dài, nhưng
+nếu database bị lộ thì mật khẩu yếu sẽ bị dò ra nhanh hơn nhiều so với một hệ thống
+đúng chuẩn. Hai lớp bù đắp — mật khẩu tối thiểu 10 ký tự và rate limit đăng nhập —
+chỉ chặn dò trực tuyến, không giúp được gì khi kẻ tấn công đã có bản dump.
+
+**Muốn mạnh hơn:** nâng lên Workers Paid ($5/tháng, hạn mức CPU 30 giây) rồi đổi hai
+hằng số đầu file `src/auth/password.ts` thành `WORKERD_MAX_ITERATIONS` và `'SHA-512'`
+— mức tốt nhất PBKDF2 đạt được trên nền tảng này. **Không cần migration:** cả hàm băm
+lẫn số vòng nằm trong từng chuỗi hash, và lần đăng nhập thành công kế tiếp của mỗi
+người dùng sẽ tự băm lại theo tham số mới.
+
+### 2. Vectorize mất khoảng một phút để index, không phải vài giây
+
+Upsert lên Vectorize là bất đồng bộ. Số đo thật trên deployment production:
+
+```
++26s  →  0/5 vector truy vấn được
++46s  →  0/5
++68s  →  5/5
+```
+
+Nghĩa là ý tưởng vừa tạo **không** tìm được bằng tìm kiếm ngữ nghĩa trong khoảng một phút
+đầu. Danh sách và tìm từ khoá (đọc thẳng D1) thì thấy ngay. Giao diện nói đúng con số này
+thay vì để người dùng tưởng tìm kiếm bị hỏng.
+
+### 3. "Gợi ý" hiện chỉ khơi lại ý tưởng của chính bạn
 
 Mọi ý tưởng đều riêng tư với tác giả, nên gợi ý cá nhân hoá chỉ có thể lôi lại ý tưởng
 **của chính bạn** mà bạn chưa thích — nó là "khơi lại ý tưởng cũ đã quên", không phải
@@ -74,8 +102,27 @@ for ix in videa-ideas videa-ideas-preview; do
     npx wrangler vectorize create-metadata-index $ix --property-name=$p --type=string
   done
 done
-npx wrangler vectorize list-metadata-index videa-ideas   # xác nhận đủ 4 trước khi đi tiếp
 ```
+
+Việc tạo metadata index là **bất đồng bộ** — lệnh trên chỉ trả về "enqueued". Đo thật:
+mất tới **~90 giây** để cả 4 property hiện ra. Phải poll cho đến khi đủ 4, **rồi mới**
+tạo ý tưởng đầu tiên:
+
+```bash
+until [ "$(npx wrangler vectorize list-metadata-index videa-ideas \
+           | grep -cE 'user_id|status|platform|visibility')" -ge 4 ]; do
+  echo "chờ metadata index..."; sleep 15
+done
+```
+
+Hai cái bẫy nữa của CLI, cả hai đều hỏng âm thầm:
+
+- `wrangler vectorize info` báo `vectorCount` **có độ trễ** — nó phản ánh trạng thái tại
+  `processedUpToDatetime`, không phải hiện tại. Đừng dùng nó để khẳng định index rỗng hay
+  đầy ngay sau khi ghi.
+- `wrangler vectorize delete-vectors --ids=a,b` **không phải** là xoá hai vector: cả chuỗi
+  bị hiểu là MỘT id và lệnh lỗi `id too long; max is 64 bytes`. Phải lặp lại cờ:
+  `--ids=a --ids=b`. Lỗi in ra stderr nên rất dễ trôi qua trong script.
 
 `visibility` được index dù v1 chưa dùng — lý do ở mục 2 phía trên.
 
@@ -124,22 +171,47 @@ npx wrangler types  # sinh lại src/env.d.ts sau MỖI lần đổi binding
 ## Deploy
 
 ```bash
-npx wrangler pages deploy
-BASE=https://cf-videa.pages.dev npm run smoke      # kiểm tra lại trên bản đã deploy
-npx wrangler pages deployment tail                 # log thật, xem CPU time thật
+npx wrangler pages deploy                     # nhánh hiện tại → preview
+npx wrangler pages deploy --branch=main       # → production (cf-videa.pages.dev)
+
+BASE=https://cf-videa.pages.dev npm run smoke                        # kiểm tra lại bản đã deploy
+npx wrangler pages deployment tail <deployment-id> --project-name cf-videa
 ```
 
-Việc định kỳ (dọn phiên hết hạn, dọn rate limit, rút vector mồ côi, đối soát index) cần
-Worker riêng, vì **Pages Functions không có cron trigger**:
+**Chẩn đoán lỗi 500 khi không dùng được `wrangler tail`.** Ở môi trường có policy egress
+chặn `tail.developers.workers.dev` (CI, sandbox), log không lấy được và một lỗi 500 câm là
+thứ không thể chẩn đoán. Vì vậy khi `APP_ENV` **khác** `production`, thân phản hồi lỗi có
+thêm trường `error.debug` chứa tên lỗi, thông điệp và 6 dòng đầu của stack. Trên production
+thì tuyệt đối không — chỉ ghi log. Chính cơ chế này đã tìm ra trần 100.000 vòng ở mục 1.
+
+### Bảo trì định kỳ — không có cron, và đó là chủ ý
+
+Pages Functions không có cron trigger. Dự án **cố ý không** dựng Worker riêng chỉ để có
+lịch: việc dọn dẹp bám theo lưu lượng thay vì theo đồng hồ.
+
+| Việc | Chạy khi nào |
+|---|---|
+| Xoá phiên đã hết hạn | ~5% số lần đăng nhập, ngoài luồng phản hồi |
+| Xoá bộ đếm rate limit của cửa sổ đã qua | như trên |
+| Rút hàng đợi vector mồ côi (`vector_gc`) | như trên |
+| Index ý tưởng chưa được embed | **người dùng bấm nút "Đồng bộ lại index"** |
+
+Việc thứ tư cố ý để thủ công: nó là thứ người dùng nhìn thấy kết quả và biết khi nào
+cần, còn ba việc kia thì không ai quan tâm miễn là chúng có xảy ra.
+
+`GET /api/health` trả `maintenance_last_run_at` và `maintenance_last_source`
+(`auto` hoặc `manual`) — không có lịch thì đó là cách duy nhất biết việc dọn còn diễn
+ra hay đã ngừng. Cố ý **không** có cờ "quá hạn": việc dọn bám theo lưu lượng nên mọi
+ngưỡng thời gian đều tùy tiện. Con số đáng theo dõi là `dirty_ideas` và `gc_pending` —
+chúng nói thẳng còn tồn đọng bao nhiêu.
+
+Muốn quét toàn bộ ngay thay vì chờ lưu lượng:
 
 ```bash
-cd cron-worker
-# Sửa PAGES_ORIGIN trong wrangler.jsonc thành domain thật của bạn
-npx wrangler secret put ADMIN_TOKEN     # PHẢI trùng secret của dự án Pages
-npx wrangler deploy
+curl -X POST https://cf-videa.pages.dev/api/admin/maintenance \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Sec-Fetch-Site: none' -d '{}'
 ```
-
----
 
 ## Kiến trúc
 
@@ -150,7 +222,6 @@ src/             Toàn bộ logic. Không import gì từ Pages.
   router.ts      Một router Hono duy nhất — đây là chỗ nối cho tính di động
   worker.ts      Entrypoint Worker, chưa dùng, giữ sẵn để chuyển nền sau này
 migrations/      Schema D1
-cron-worker/     Worker riêng, chỉ làm mỗi việc đánh thức /api/admin/cron
 ```
 
 **Vì sao tách `src/` khỏi `functions/`:** chuyển từ Pages sang Worker + static assets sau
@@ -182,7 +253,7 @@ gợi ý về thứ hạng; D1 mới là nơi quyết định ai sở hữu cái
 là "bẩn". Vì `MODEL_ID` nằm trong hash, **đổi model là mọi hàng tự động thành bẩn** — công cụ
 đối soát có sẵn trở thành công cụ chuyển đổi model, không phải viết thêm gì.
 
-**Không cần Queues.** Cột `embedded_hash` chính LÀ hàng đợi thử lại, và đếm được bằng một câu
+**Không cần Queues, cũng không cần cron.** Cột `embedded_hash` chính LÀ hàng đợi thử lại, và đếm được bằng một câu
 SQL (`/api/health` trả về `dirty_ideas`). Index chạy đồng bộ ngay trong request — người dùng
 vừa lưu thì mong tìm thấy ngay, còn lỗi trong `waitUntil` thì vô hình và không ai thử lại.
 Lỗi embedding **không bao giờ** làm hỏng thao tác lưu: bản ghi vẫn còn, chỉ ở trạng thái bẩn.
@@ -222,7 +293,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 
 | Method | Path | Auth | Ghi chú |
 |---|---|:--:|---|
-| GET | `/api/health` | — | Kiểm tra D1 + sự hiện diện của binding; trả `dirty_ideas` |
+| GET | `/api/health` | — | Kiểm tra D1 + binding; trả `dirty_ideas`, `gc_pending`, `maintenance_last_run_at` |
 | POST | `/api/auth/register` | — | `{email, password, display_name?}` |
 | POST | `/api/auth/login` | — | `{email, password}` |
 | POST | `/api/auth/logout` | ✓ | |
@@ -241,7 +312,16 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | GET | `/api/tags` | ✓ | |
 | POST | `/api/reindex` | ✓ | Đối soát cho chính mình, theo lô |
 | POST | `/api/admin/reindex` | `ADMIN_TOKEN` | `{scope: dirty\|all\|user}` — cũng là công cụ đổi model |
-| POST | `/api/admin/cron` | `ADMIN_TOKEN` | Điểm vào cho cron-worker |
+| POST | `/api/admin/maintenance` | `ADMIN_TOKEN` | Quét toàn bộ một lần: dọn phiên, rate limit, vector mồ côi, đối soát index |
+
+## Trạng thái đang chạy
+
+| Thứ | Ở đâu |
+|---|---|
+| Production | https://cf-videa.pages.dev — `env: production`, D1 `videa-db`, index `videa-ideas` |
+| Preview (nhánh này) | https://claude-account-management-sh.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
+Cả hai D1 và cả hai Vectorize index đã được dọn sạch dữ liệu kiểm thử; index có đủ 4
+metadata index và chưa có vector nào, nên tài khoản đầu tiên bạn tạo sẽ được index đúng.
 
 ## Kiểm thử
 

@@ -48,6 +48,13 @@ export async function setIdeaTags(
   await env.DB.batch(stmts);
 }
 
+/**
+ * Hàm này KHÔNG nhận userId, vì nó cũng phục vụ đối soát toàn hệ thống (chạy trên
+ * ý tưởng của nhiều người cùng lúc). Thay vào đó, phép join `i.user_id = t.user_id`
+ * ràng buộc ngay trong câu lệnh rằng tag phải thuộc cùng chủ sở hữu với ý tưởng —
+ * nên không thể rò rỉ tag chéo tài khoản dù người gọi có truyền id gì đi nữa.
+ * Bảo đảm bằng cấu trúc, không phải bằng quy ước gọi hàm.
+ */
 export async function tagsForIdeas(
   env: Env,
   ideaIds: string[],
@@ -57,7 +64,9 @@ export async function tagsForIdeas(
   const ph = ideaIds.map((_, i) => `?${i + 1}`).join(', ');
   const { results } = await env.DB.prepare(
     `SELECT it.idea_id, t.name
-       FROM idea_tags it JOIN tags t ON t.id = it.tag_id
+       FROM idea_tags it
+       JOIN tags  t ON t.id = it.tag_id
+       JOIN ideas i ON i.id = it.idea_id AND i.user_id = t.user_id
       WHERE it.idea_id IN (${ph})
       ORDER BY t.name`,
   )

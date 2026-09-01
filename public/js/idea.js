@@ -68,7 +68,7 @@ if (!isNew) {
       show(
         msg,
         idea.indexed
-          ? 'Đã tạo ý tưởng. Tìm kiếm ngữ nghĩa sẽ thấy nó sau vài giây.'
+          ? 'Đã tạo ý tưởng. Tìm kiếm ngữ nghĩa sẽ thấy nó sau khoảng một phút.'
           : 'Đã tạo ý tưởng, nhưng chưa index được nên tìm kiếm ngữ nghĩa chưa thấy. '
             + 'Dùng nút "Đồng bộ lại index" ở trang kho ý tưởng.',
         idea.indexed ? 'ok' : 'note',
@@ -99,12 +99,13 @@ $('#f').addEventListener('submit', async (e) => {
       return;
     }
     fill(res.idea);
-    // Upsert lên Vectorize là bất đồng bộ: vector vừa ghi mất vài giây mới truy
-    // vấn được. Nói thẳng ra thay vì để người dùng tưởng tìm kiếm bị hỏng.
+    // Upsert lên Vectorize là bất đồng bộ. Số đo thật trên production: vector vừa
+    // ghi mất KHOẢNG 60–70 GIÂY mới truy vấn được — không phải vài giây. Nói đúng
+    // con số, nếu không người dùng sẽ tưởng tìm kiếm bị hỏng.
     show(
       msg,
       res.indexed
-        ? 'Đã lưu. Tìm kiếm ngữ nghĩa sẽ thấy ý tưởng này sau vài giây.'
+        ? 'Đã lưu. Tìm kiếm ngữ nghĩa sẽ thấy ý tưởng này sau khoảng một phút.'
         : 'Đã lưu, nhưng chưa index được. Thử nút "Đồng bộ lại index" ở trang kho ý tưởng.',
       res.indexed ? 'ok' : 'note',
     );

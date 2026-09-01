@@ -26,7 +26,7 @@ async function run(q) {
     renderList(
       listEl,
       data.items,
-      'Không tìm thấy ý tưởng nào. Ý tưởng vừa tạo cần vài giây mới xuất hiện ở đây.',
+      'Không tìm thấy ý tưởng nào. Ý tưởng vừa tạo cần khoảng một phút mới xuất hiện ở đây.',
     );
     const url = new URL(location.href);
     url.searchParams.set('q', q);

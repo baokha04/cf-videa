@@ -10,7 +10,7 @@
     "deploy:preview": "wrangler pages deploy --branch=dev",
     "types": "wrangler types --env-interface Env ./src/env.d.ts",
     "tail": "wrangler pages deployment tail",
-    "db:local": "wrangler d1 execute videa-db --local --file=./migrations/0001_init.sql",
+    "db:local": "for f in migrations/*.sql; do wrangler d1 execute videa-db --local --file=$f; done",
     "db:remote": "wrangler d1 execute videa-db --remote --file=./migrations/0001_init.sql",
     "test": "vitest run",
     "test:watch": "vitest",

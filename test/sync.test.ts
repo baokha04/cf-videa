@@ -3,7 +3,7 @@ import { fakeVectorize, migrate, testEnv } from './helpers';
 import { hashPassword } from '../src/auth/password';
 import * as usersDb from '../src/db/users';
 import * as ideasDb from '../src/db/ideas';
-import { indexIdea, reconcile, drainVectorGc } from '../src/vec/sync';
+import { indexIdea, reconcile, drainVectorGc, refreshVectorMetadata } from '../src/vec/sync';
 import { queueGc } from '../src/vec/index';
 import { MODEL_ID } from '../src/vec/embeddings';
 import type { Env } from '../src/types';
@@ -119,6 +119,37 @@ describe('đồng bộ D1 ↔ Vectorize', () => {
     await reconcile(env, 10, uid);
     await ideasDb.update(env, uid, idea.id, { ...BASE, title: 'Tiêu đề mới', status: 'filmed' }, 'h2');
     expect(await ideasDb.countDirty(env, uid)).toBe(0);
+  });
+
+  it('đổi mỗi status phải cập nhật metadata của vector, không được để mốc', async () => {
+    // Đây là cái bẫy im lặng: status nằm trong metadata của vector nhưng KHÔNG nằm
+    // trong văn bản đem đi nhúng, nên content_hash không đổi. Nếu chỉ dựa vào hash
+    // để quyết định có upsert hay không thì Vectorize sẽ giữ status cũ mãi mãi, và
+    // /api/search?status=… lọc sai mà không có dấu hiệu gì.
+    const vec = fakeVectorize();
+    const env = envWith(vec);
+    const idea = await ideasDb.create(env, uid, BASE, 'h1');
+    await indexIdea(env, idea, []);
+    expect(vec.store.get(idea.id)!.metadata['status']).toBe('idea');
+
+    const before = vec.store.get(idea.id)!.values;
+    await ideasDb.update(env, uid, idea.id, { ...BASE, status: 'published' }, 'h1');
+    const fresh = await ideasDb.getById(env, uid, idea.id);
+    expect(await refreshVectorMetadata(env, fresh!)).toBe(true);
+
+    expect(vec.store.get(idea.id)!.metadata['status']).toBe('published');
+    // Và KHÔNG embed lại: vector giữ nguyên, tức là không tốn lời gọi Workers AI nào.
+    expect(vec.store.get(idea.id)!.values).toEqual(before);
+    // Hàng vẫn sạch, không bị đánh dấu bẩn oan.
+    expect(await ideasDb.countDirty(env, uid)).toBe(0);
+  });
+
+  it('cập nhật metadata khi chưa có vector thì báo false để lùi về đường đầy đủ', async () => {
+    const vec = fakeVectorize();
+    const env = envWith(vec);
+    const idea = await ideasDb.create(env, uid, BASE, 'h1');
+    // Chưa từng index → không có gì để cập nhật.
+    expect(await refreshVectorMetadata(env, idea)).toBe(false);
   });
 
   it('vector mồ côi được xếp hàng và rút sạch', async () => {

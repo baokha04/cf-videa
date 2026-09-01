@@ -51,7 +51,7 @@ export async function deleteIdeaVectors(env: Env, ids: string[]): Promise<void> 
   await env.VEC.deleteByIds(ids);
 }
 
-/** Xoá vector thất bại → xếp hàng để /api/admin/cron rút dần. */
+/** Xoá vector thất bại → xếp hàng để lần bảo trì kế tiếp rút dần. */
 export async function queueGc(env: Env, ids: string[], userId: string): Promise<void> {
   if (ids.length === 0) return;
   const t = now();

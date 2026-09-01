@@ -2,7 +2,7 @@ import type { Ctx } from '../http/guard';
 import { readJson, requireAdmin, requireUser } from '../http/guard';
 import { badRequest } from '../http/response';
 import * as ideasDb from '../db/ideas';
-import { sweepExpiredSessions } from '../auth/session';
+import { recordMaintenanceRun, sweepExpiredSessions } from '../auth/session';
 import { sweepRateLimits } from '../auth/ratelimit';
 import { drainVectorGc, reconcile } from '../vec/sync';
 
@@ -13,12 +13,24 @@ export async function health(c: Ctx): Promise<Response> {
       `SELECT (SELECT COUNT(*) FROM ideas
                 WHERE embedded_hash IS NULL OR embedded_hash <> content_hash) AS dirty_ideas,
               (SELECT COUNT(*) FROM vector_gc)  AS gc_pending,
-              (SELECT COUNT(*) FROM sessions WHERE expires_at > ?1) AS sessions_active`,
+              (SELECT COUNT(*) FROM sessions WHERE expires_at > ?1) AS sessions_active,
+              (SELECT ran_at FROM maintenance_runs WHERE id = 1)    AS maintenance_last_run_at,
+              (SELECT source FROM maintenance_runs WHERE id = 1)    AS maintenance_last_source`,
     )
       .bind(Date.now())
-      .first<{ dirty_ideas: number; gc_pending: number; sessions_active: number }>();
+      .first<{
+        dirty_ideas: number;
+        gc_pending: number;
+        sessions_active: number;
+        maintenance_last_run_at: number | null;
+        maintenance_last_source: string | null;
+      }>();
     out['d1'] = 'ok';
     Object.assign(out, row ?? {});
+
+    // Cố ý KHÔNG có cờ "quá hạn": việc bảo trì chạy cơ hội theo lưu lượng chứ không
+    // theo lịch, nên mọi ngưỡng thời gian đều là tùy tiện. Con số đáng theo dõi là
+    // dirty_ideas và gc_pending ở trên — chúng nói thẳng còn tồn đọng bao nhiêu.
   } catch (err) {
     out['ok'] = false;
     out['d1'] = `error: ${String(err).slice(0, 120)}`;
@@ -60,10 +72,15 @@ export async function reindexAdmin(c: Ctx): Promise<Response> {
 }
 
 /**
- * Điểm vào cho công việc định kỳ. Pages Functions KHÔNG có cron trigger, nên
- * endpoint này được đánh thức bởi Worker riêng trong cron-worker/ (xem README).
+ * Chạy tay toàn bộ việc bảo trì.
+ *
+ * Pages Functions không có cron trigger, và dự án cố ý KHÔNG dựng Worker riêng chỉ
+ * để có lịch: cùng những việc này đã chạy theo kiểu cơ hội trên một phần nhỏ số lần
+ * đăng nhập (xem src/routes/auth.ts), còn việc index ý tưởng thì người dùng bấm nút
+ * "Đồng bộ lại index" khi cần. Endpoint này là đường quét toàn bộ một lần, dùng khi
+ * muốn dọn ngay thay vì chờ lưu lượng.
  */
-export async function cron(c: Ctx): Promise<Response> {
+export async function maintenance(c: Ctx): Promise<Response> {
   requireAdmin(c);
   const [sessionsGc, rateGc, vecGc] = await Promise.all([
     sweepExpiredSessions(c.env, 500),
@@ -71,6 +88,11 @@ export async function cron(c: Ctx): Promise<Response> {
     drainVectorGc(c.env, 100),
   ]);
   const reindexed = await reconcile(c.env, 50);
+  await recordMaintenanceRun(
+    c.env,
+    { sessions: sessionsGc, rate: rateGc, vector: vecGc, reindexed: reindexed.processed },
+    'manual',
+  );
   return c.json({
     sessions_gc: sessionsGc,
     rate_gc: rateGc,

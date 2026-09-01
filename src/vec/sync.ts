@@ -2,7 +2,7 @@ import type { Env, IdeaRow } from '../types';
 import * as ideasDb from '../db/ideas';
 import { tagsForIdeas } from '../db/tags';
 import { buildEmbedText, embed, MODEL_ID } from './embeddings';
-import { upsertIdeas } from './index';
+import { getVectors, upsertIdeas } from './index';
 
 /**
  * Giữ D1 và Vectorize đồng bộ.
@@ -32,6 +32,30 @@ export async function indexIdea(env: Env, idea: IdeaRow, tags: string[]): Promis
   } catch (err) {
     console.error('indexIdea failed', idea.id, err);
     await ideasDb.markEmbedFailed(env, idea.id).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * Cập nhật metadata của vector mà KHÔNG embed lại.
+ *
+ * Cần thiết vì `status` nằm trong metadata của vector nhưng KHÔNG nằm trong văn bản
+ * đem đi nhúng — nên đổi mỗi trạng thái không làm content_hash đổi, và nếu chỉ dựa
+ * vào hash để quyết định có upsert hay không thì metadata trên Vectorize sẽ mốc lại
+ * ở giá trị cũ. Hậu quả im lặng: `/api/search?status=…` lọc sai, và gợi ý vẫn kéo về
+ * những ý tưởng đã publish.
+ *
+ * Dùng lại vector đã lưu qua getByIds thay vì gọi lại Workers AI — rẻ hơn hẳn.
+ * Trả về false nếu chưa có vector; khi đó gọi indexIdea() để đi đường đầy đủ.
+ */
+export async function refreshVectorMetadata(env: Env, idea: IdeaRow): Promise<boolean> {
+  try {
+    const values = (await getVectors(env, [idea.id])).get(idea.id);
+    if (!values) return false;
+    await upsertIdeas(env, [{ idea, values }]);
+    return true;
+  } catch (err) {
+    console.error('refreshVectorMetadata failed', idea.id, err);
     return false;
   }
 }
