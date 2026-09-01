@@ -104,8 +104,22 @@ for ix in videa-ideas videa-ideas-preview; do
     npx wrangler vectorize create-metadata-index $ix --property-name=$p --type=string
   done
 done
-npx wrangler vectorize list-metadata-index videa-ideas   # xác nhận đủ 4 trước khi đi tiếp
 ```
+
+Việc tạo metadata index là **bất đồng bộ** — lệnh trên chỉ trả về "enqueued". Đo thật:
+mất tới **~90 giây** để cả 4 property hiện ra. Phải poll cho đến khi đủ 4, **rồi mới**
+tạo ý tưởng đầu tiên:
+
+```bash
+until [ "$(npx wrangler vectorize list-metadata-index videa-ideas \
+           | grep -cE 'user_id|status|platform|visibility')" -ge 4 ]; do
+  echo "chờ metadata index..."; sleep 15
+done
+```
+
+Lưu ý thêm: `wrangler vectorize info` báo `vectorCount` **có độ trễ** — nó phản ánh trạng
+thái tại `processedUpToDatetime`, không phải hiện tại. Đừng dùng nó để khẳng định index
+rỗng hay đầy ngay sau khi ghi.
 
 `visibility` được index dù v1 chưa dùng — lý do ở mục 2 phía trên.
 
@@ -280,6 +294,17 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | POST | `/api/reindex` | ✓ | Đối soát cho chính mình, theo lô |
 | POST | `/api/admin/reindex` | `ADMIN_TOKEN` | `{scope: dirty\|all\|user}` — cũng là công cụ đổi model |
 | POST | `/api/admin/cron` | `ADMIN_TOKEN` | Điểm vào cho cron-worker |
+
+## Trạng thái đang chạy
+
+| Thứ | Ở đâu |
+|---|---|
+| Production | https://cf-videa.pages.dev — `env: production`, D1 `videa-db`, index `videa-ideas` |
+| Preview (nhánh này) | https://claude-account-management-sh.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
+| Cron | Worker `cf-videa-cron`, lịch `*/15 * * * *`, không mở route công khai |
+
+Cả hai D1 và cả hai Vectorize index đã được dọn sạch dữ liệu kiểm thử; index có đủ 4
+metadata index và chưa có vector nào, nên tài khoản đầu tiên bạn tạo sẽ được index đúng.
 
 ## Kiểm thử
 
