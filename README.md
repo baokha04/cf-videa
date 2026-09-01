@@ -13,42 +13,40 @@ trạng thái), tìm được **theo ý nghĩa** chứ không chỉ theo từ kh
 
 ## Ba ràng buộc thật của nền tảng, đo trên deployment thật
 
-### 1. Trần cứng 100.000 vòng của workerd, và hệ quả lên băm mật khẩu
+### 1. Băm mật khẩu bị siết từ hai phía, và kết quả yếu hơn khuyến nghị
 
-workerd **chặn cứng số vòng PBKDF2 ở 100.000**. Vượt qua sẽ ném thẳng lỗi:
+**(a) workerd chặn cứng số vòng PBKDF2 ở 100.000.** Vượt qua ném thẳng
+`NotSupportedError: Pbkdf2 failed: iteration counts above 100000 are not supported`.
+Không phải giới hạn theo gói — nâng gói cũng không gỡ được.
 
-```
-NotSupportedError: Pbkdf2 failed: iteration counts above 100000 are not supported
-```
+**(b) Gói Workers Free giới hạn ~10ms CPU mỗi request**, và PBKDF2 là CPU thuần.
+Vượt qua thì Cloudflare ngắt bằng `Error 1102: Worker exceeded resource limits`.
 
-Đây **không** phải giới hạn theo gói cước — nâng lên Workers Paid cũng không gỡ được.
-Nên không thể tăng độ khó bằng cách tăng số vòng; cách duy nhất còn lại là chọn hàm băm
-đắt hơn cho mỗi vòng. Số đo thực tế (`node scripts/bench-pbkdf2.mjs`), mỗi lần băm:
+Cái bẫy của (b): **nó không hỏng ngay từ request đầu.** Bản dùng SHA-512 100.000 vòng
+(66ms) chạy trót lọt 18–21 lần đăng nhập liên tiếp rồi mới bung 1102. Kiểm thử lẻ tẻ
+hoàn toàn không phát hiện được — chỉ tải liên tục mới lộ ra. Số đo:
 
-| Hàm băm | 50.000 | 100.000 | 210.000 | 600.000 |
+| Hàm băm | 20.000 | 30.000 | 50.000 | 100.000 |
 |---|---:|---:|---:|---:|
-| SHA-256 | 10 ms | 20 ms | 43 ms ✗ | 112 ms ✗ |
-| **SHA-512** | 31 ms | **66 ms** ← đang dùng | 130 ms ✗ | 368 ms ✗ |
+| SHA-256 | 4 ms | **7 ms** ← đang dùng | 12 ms ✗ | 18 ms ✗ |
+| SHA-512 | 12 ms ✗ | 18 ms ✗ | 30 ms ✗ | 66 ms ✗ |
 
-✗ = workerd từ chối chạy.
+✗ = vượt ngân sách CPU của gói Free.
 
-Vì vậy cấu hình là **PBKDF2-HMAC-SHA512, 100.000 vòng** — đúng trần nền tảng, với hàm băm
-đắt nhất dùng được. Công bỏ ra tương đương khoảng 340.000 vòng SHA-256.
+Cấu hình hiện tại: **PBKDF2-HMAC-SHA256, 30.000 vòng**.
 
-**Nói thẳng về mức bảo vệ:** OWASP khuyến nghị 600.000 vòng cho PBKDF2-HMAC-SHA256 hoặc
-210.000 vòng cho PBKDF2-HMAC-SHA512. Trần của workerd khiến cấu hình này chỉ đạt khoảng
-một nửa mức khuyến nghị. Đó là mức tốt nhất PBKDF2 đạt được trên nền tảng này. Muốn vượt
-qua phải đổi sang Argon2id biên dịch ra WASM — đắt hơn nhiều về công sức và kích thước
-bundle, chỉ nên làm nếu mô hình đe doạ thực sự đòi hỏi. Bù lại đã có hai lớp khác: mật
-khẩu tối thiểu 10 ký tự và rate limit đăng nhập.
+**Nói thẳng về mức bảo vệ:** OWASP khuyến nghị 600.000 vòng cho PBKDF2-HMAC-SHA256.
+Cấu hình này thấp hơn khoảng **20 lần**. Đây là lựa chọn có ý thức để ở lại gói Free,
+không phải sơ suất. Mật khẩu vẫn có salt ngẫu nhiên riêng và vẫn được kéo dài, nhưng
+nếu database bị lộ thì mật khẩu yếu sẽ bị dò ra nhanh hơn nhiều so với một hệ thống
+đúng chuẩn. Hai lớp bù đắp — mật khẩu tối thiểu 10 ký tự và rate limit đăng nhập —
+chỉ chặn dò trực tuyến, không giúp được gì khi kẻ tấn công đã có bản dump.
 
-Cả hàm băm lẫn số vòng đều nằm trong từng chuỗi hash (`pbkdf2$sha512$100000$...`), nên
-đổi tham số sau này không cần migration: hàng cũ vẫn đăng nhập được và lần đăng nhập
-thành công đó tự băm lại theo mức mới.
-
-**Về CPU:** ~66 ms mỗi lần đăng nhập. Nằm gọn trong hạn mức 30 giây của gói Workers Paid,
-nhưng vượt hạn mức 10 ms của gói Free — mà ngay cả SHA-256 ở 100.000 vòng (~20 ms) cũng
-đã vượt. Không có cách nào làm hàm băm mật khẩu đúng chuẩn mà rẻ; đó chính là mục đích.
+**Muốn mạnh hơn:** nâng lên Workers Paid ($5/tháng, hạn mức CPU 30 giây) rồi đổi hai
+hằng số đầu file `src/auth/password.ts` thành `WORKERD_MAX_ITERATIONS` và `'SHA-512'`
+— mức tốt nhất PBKDF2 đạt được trên nền tảng này. **Không cần migration:** cả hàm băm
+lẫn số vòng nằm trong từng chuỗi hash, và lần đăng nhập thành công kế tiếp của mỗi
+người dùng sẽ tự băm lại theo tham số mới.
 
 ### 2. Vectorize mất khoảng một phút để index, không phải vài giây
 
@@ -186,46 +184,34 @@ thứ không thể chẩn đoán. Vì vậy khi `APP_ENV` **khác** `production`
 thêm trường `error.debug` chứa tên lỗi, thông điệp và 6 dòng đầu của stack. Trên production
 thì tuyệt đối không — chỉ ghi log. Chính cơ chế này đã tìm ra trần 100.000 vòng ở mục 1.
 
-Việc định kỳ (dọn phiên hết hạn, dọn rate limit, rút vector mồ côi, đối soát index) cần
-Worker riêng, vì **Pages Functions không có cron trigger**:
+### Bảo trì định kỳ — không có cron, và đó là chủ ý
+
+Pages Functions không có cron trigger. Dự án **cố ý không** dựng Worker riêng chỉ để có
+lịch: việc dọn dẹp bám theo lưu lượng thay vì theo đồng hồ.
+
+| Việc | Chạy khi nào |
+|---|---|
+| Xoá phiên đã hết hạn | ~5% số lần đăng nhập, ngoài luồng phản hồi |
+| Xoá bộ đếm rate limit của cửa sổ đã qua | như trên |
+| Rút hàng đợi vector mồ côi (`vector_gc`) | như trên |
+| Index ý tưởng chưa được embed | **người dùng bấm nút "Đồng bộ lại index"** |
+
+Việc thứ tư cố ý để thủ công: nó là thứ người dùng nhìn thấy kết quả và biết khi nào
+cần, còn ba việc kia thì không ai quan tâm miễn là chúng có xảy ra.
+
+`GET /api/health` trả `maintenance_last_run_at` và `maintenance_last_source`
+(`auto` hoặc `manual`) — không có lịch thì đó là cách duy nhất biết việc dọn còn diễn
+ra hay đã ngừng. Cố ý **không** có cờ "quá hạn": việc dọn bám theo lưu lượng nên mọi
+ngưỡng thời gian đều tùy tiện. Con số đáng theo dõi là `dirty_ideas` và `gc_pending` —
+chúng nói thẳng còn tồn đọng bao nhiêu.
+
+Muốn quét toàn bộ ngay thay vì chờ lưu lượng:
 
 ```bash
-cd cron-worker
-npx wrangler deploy
-```
-
-Worker này **không** gọi HTTP sang app Pages — nó import thẳng các hàm trong `../src` và
-chạy trên binding D1/Vectorize của chính nó. Nên không cần secret dùng chung, không cần
-`PAGES_ORIGIN`, và không có chặng mạng nào để hỏng. Đó chính là lợi ích cụ thể của việc
-`src/` không import gì từ Pages: cùng một bản code chạy được ở cả hai nơi.
-
-Bản đầu tiên có gọi HTTP sang `/api/admin/cron`, và nó im lặng không làm gì suốt nhiều
-chu kỳ: lịch cron có đăng ký, endpoint gọi tay chạy đúng, nhưng đường qua worker thì
-không — và không chẩn đoán được vì log không lấy được ở môi trường có policy egress.
-Bỏ hẳn chặng đó đi thì vấn đề biến mất cùng với nguyên nhân.
-
-**Theo dõi cron còn sống hay không.** Cả cron worker lẫn endpoint chạy tay đều ghi một
-nhịp tim vào bảng `cron_runs` (đúng một hàng, ghi đè mỗi lần). `GET /api/health` trả ra:
-
-```json
-{ "cron_last_run_at": 1788280000000, "cron_last_source": "cron", "cron_stale": false }
-```
-
-`cron_stale` thành `true` khi quá 45 phút không có nhịp nào (lịch là 15 phút), và là
-chuỗi `"chưa từng chạy"` khi bảng còn rỗng. Có nó thì một cron chết là một trường JSON
-đọc được; không có nó thì phiên hết hạn chất đống và ý tưởng chưa index nằm im, không
-dấu hiệu gì — đúng tình huống đã xảy ra khi dựng hệ thống này, và log thì không lấy
-được vì `wrangler tail` bị policy egress chặn.
-
-Endpoint `POST /api/admin/cron` vẫn giữ để chạy tay khi cần:
-
-```bash
-curl -X POST https://cf-videa.pages.dev/api/admin/cron \
+curl -X POST https://cf-videa.pages.dev/api/admin/maintenance \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'Content-Type: application/json' -H 'Sec-Fetch-Site: none' -d '{}'
 ```
-
----
 
 ## Kiến trúc
 
@@ -236,7 +222,6 @@ src/             Toàn bộ logic. Không import gì từ Pages.
   router.ts      Một router Hono duy nhất — đây là chỗ nối cho tính di động
   worker.ts      Entrypoint Worker, chưa dùng, giữ sẵn để chuyển nền sau này
 migrations/      Schema D1
-cron-worker/     Worker riêng, chỉ làm mỗi việc đánh thức /api/admin/cron
 ```
 
 **Vì sao tách `src/` khỏi `functions/`:** chuyển từ Pages sang Worker + static assets sau
@@ -268,7 +253,7 @@ gợi ý về thứ hạng; D1 mới là nơi quyết định ai sở hữu cái
 là "bẩn". Vì `MODEL_ID` nằm trong hash, **đổi model là mọi hàng tự động thành bẩn** — công cụ
 đối soát có sẵn trở thành công cụ chuyển đổi model, không phải viết thêm gì.
 
-**Không cần Queues.** Cột `embedded_hash` chính LÀ hàng đợi thử lại, và đếm được bằng một câu
+**Không cần Queues, cũng không cần cron.** Cột `embedded_hash` chính LÀ hàng đợi thử lại, và đếm được bằng một câu
 SQL (`/api/health` trả về `dirty_ideas`). Index chạy đồng bộ ngay trong request — người dùng
 vừa lưu thì mong tìm thấy ngay, còn lỗi trong `waitUntil` thì vô hình và không ai thử lại.
 Lỗi embedding **không bao giờ** làm hỏng thao tác lưu: bản ghi vẫn còn, chỉ ở trạng thái bẩn.
@@ -308,7 +293,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 
 | Method | Path | Auth | Ghi chú |
 |---|---|:--:|---|
-| GET | `/api/health` | — | Kiểm tra D1 + binding; trả `dirty_ideas`, `gc_pending`, `cron_last_run_at`, `cron_stale` |
+| GET | `/api/health` | — | Kiểm tra D1 + binding; trả `dirty_ideas`, `gc_pending`, `maintenance_last_run_at` |
 | POST | `/api/auth/register` | — | `{email, password, display_name?}` |
 | POST | `/api/auth/login` | — | `{email, password}` |
 | POST | `/api/auth/logout` | ✓ | |
@@ -327,7 +312,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | GET | `/api/tags` | ✓ | |
 | POST | `/api/reindex` | ✓ | Đối soát cho chính mình, theo lô |
 | POST | `/api/admin/reindex` | `ADMIN_TOKEN` | `{scope: dirty\|all\|user}` — cũng là công cụ đổi model |
-| POST | `/api/admin/cron` | `ADMIN_TOKEN` | Điểm vào cho cron-worker |
+| POST | `/api/admin/maintenance` | `ADMIN_TOKEN` | Quét toàn bộ một lần: dọn phiên, rate limit, vector mồ côi, đối soát index |
 
 ## Trạng thái đang chạy
 
@@ -335,43 +320,6 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 |---|---|
 | Production | https://cf-videa.pages.dev — `env: production`, D1 `videa-db`, index `videa-ideas` |
 | Preview (nhánh này) | https://claude-account-management-sh.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
-| Cron | Worker `cf-videa-cron`, lịch `*/15 * * * *`, không route công khai, dùng chung D1 + Vectorize với production. **Chưa quan sát được nó bắn — xem bên dưới.** |
-
-### ⚠️ Cron chưa được kiểm chứng là có bắn
-
-Qua **sáu** mốc 15 phút liên tiếp không có nhịp tim nào được ghi. Những giả thuyết sau
-đã bị loại trừ bằng thực nghiệm, không phải bằng suy đoán:
-
-| Đã kiểm chứng | Kết quả |
-|---|---|
-| Lịch có được đăng ký không | Có — API Cloudflare trả về `*/15 * * * *`, tạo lúc 14:23 |
-| Script deploy có export `scheduled` không | Có — đọc mã nguồn đã deploy qua API |
-| Binding D1/Vectorize/AI có đúng không | Có — API xác nhận đủ ba |
-| Công việc bên trong có chạy được không | Có — gọi tay `/api/admin/cron` quét sạch đúng |
-| Có phải do chặng HTTP sang app Pages không | Không — bỏ hẳn chặng đó, vẫn không bắn |
-| Có phải do `ctx.waitUntil` trong `scheduled()` không | Không — đổi sang `await` thẳng, vẫn không bắn |
-| Có phải do worker không có route nào không | Không — bật `workers_dev`, mốc kế tiếp vẫn trượt |
-
-Không chẩn đoán thêm được từ môi trường dựng dự án này: `wrangler tail` bị policy egress
-chặn (`tail.developers.workers.dev`), truy vấn Workers Observability và GraphQL analytics
-đều trả rỗng vì API token thiếu quyền đọc, và `*.workers.dev` cũng bị chặn nên không gọi
-tay worker được. Nguyên nhân nằm ngoài code và ngoài cấu hình trong repo này.
-
-**Cách bạn kiểm tra trên máy mình:**
-
-```bash
-curl -s https://cf-videa.pages.dev/api/health | jq '{cron_last_run_at, cron_stale}'
-cd cron-worker && npx wrangler tail          # log thật, chạy được trên máy bạn
-```
-
-Nếu `cron_stale` vẫn là `"chưa từng chạy"` sau một giờ, xem tab Cron Triggers của worker
-`cf-videa-cron` trên dashboard Cloudflare — nó hiển thị lịch sử từng lần chạy.
-
-**Trong lúc đó ứng dụng vẫn tự bảo trì được.** Không có việc định kỳ nào chỉ dựa vào
-cron: dọn phiên hết hạn, dọn bộ đếm rate limit và rút hàng đợi vector mồ côi đều chạy
-thêm theo kiểu cơ hội trên khoảng 5% số lần đăng nhập (ngoài luồng phản hồi), còn đối
-soát index có nút "Đồng bộ lại index" trong giao diện. Cron chỉ làm việc đó đều đặn hơn.
-
 Cả hai D1 và cả hai Vectorize index đã được dọn sạch dữ liệu kiểm thử; index có đủ 4
 metadata index và chưa có vector nào, nên tài khoản đầu tiên bạn tạo sẽ được index đúng.
 

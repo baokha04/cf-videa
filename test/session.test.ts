@@ -6,7 +6,7 @@ import {
   revokeAllSessions,
   revokeSession,
   sweepExpiredSessions,
-  recordCronRun,
+  recordMaintenanceRun,
 } from '../src/auth/session';
 import { migrate, testEnv } from './helpers';
 import { hashPassword } from '../src/auth/password';
@@ -136,27 +136,27 @@ describe('phiên đăng nhập', () => {
   });
 });
 
-describe('nhịp tim cron', () => {
+describe('nhịp tim bảo trì', () => {
   beforeEach(async () => {
     await migrate();
-    await testEnv().DB.prepare('DELETE FROM cron_runs').run();
+    await testEnv().DB.prepare('DELETE FROM maintenance_runs').run();
   });
 
   it('ghi và ghi đè đúng một hàng duy nhất', async () => {
-    await recordCronRun(testEnv(), { sessions: 3, rate: 1, vector: 0, reindexed: 2 }, 'cron');
+    await recordMaintenanceRun(testEnv(), { sessions: 3, rate: 1, vector: 0, reindexed: 2 }, 'auto');
     let row = await testEnv()
-      .DB.prepare('SELECT * FROM cron_runs')
+      .DB.prepare('SELECT * FROM maintenance_runs')
       .first<{ id: number; sessions_gc: number; source: string; ran_at: number }>();
     expect(row?.id).toBe(1);
     expect(row?.sessions_gc).toBe(3);
-    expect(row?.source).toBe('cron');
+    expect(row?.source).toBe('auto');
 
-    await recordCronRun(testEnv(), { sessions: 9, rate: 0, vector: 0, reindexed: 0 }, 'manual');
-    const { results } = await testEnv().DB.prepare('SELECT * FROM cron_runs').all();
+    await recordMaintenanceRun(testEnv(), { sessions: 9, rate: 0, vector: 0, reindexed: 0 }, 'manual');
+    const { results } = await testEnv().DB.prepare('SELECT * FROM maintenance_runs').all();
     // Ghi đè, không chất đống: bảng luôn đúng một hàng.
     expect(results).toHaveLength(1);
     row = await testEnv()
-      .DB.prepare('SELECT * FROM cron_runs')
+      .DB.prepare('SELECT * FROM maintenance_runs')
       .first<{ id: number; sessions_gc: number; source: string; ran_at: number }>();
     expect(row?.sessions_gc).toBe(9);
     expect(row?.source).toBe('manual');

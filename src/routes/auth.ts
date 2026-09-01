@@ -1,6 +1,6 @@
 import type { Ctx } from '../http/guard';
 import { clientIp, pathParam, readJson, requireSession, requireUser } from '../http/guard';
-import { badRequest, unauthorized } from '../http/response';
+import { ApiError, badRequest, unauthorized } from '../http/response';
 import { clearCookie, serializeCookie } from '../http/cookies';
 import * as usersDb from '../db/users';
 import { dummyHash, hashPassword, verifyPassword } from '../auth/password';
@@ -8,6 +8,7 @@ import {
   COOKIE_MAX_AGE_SEC,
   createSession,
   revokeAllSessions,
+  recordMaintenanceRun,
   revokeSession,
   sweepExpiredSessions,
 } from '../auth/session';
@@ -72,17 +73,30 @@ export async function login(c: Ctx): Promise<Response> {
   await enforce(c.env, emailBucket, LIMITS.loginEmail,
     'Quá nhiều lần đăng nhập sai. Vui lòng thử lại sau ít phút.');
 
-  const user = await usersDb.findByEmail(c.env, email);
-  if (!user || user.status !== 'active') {
-    // Vẫn tốn đúng chừng ấy CPU để thời gian phản hồi không tiết lộ điều gì.
-    await dummyHash(password || 'x');
-    throw badRequest('invalid_credentials', GENERIC_AUTH_ERROR);
+  let user: Awaited<ReturnType<typeof usersDb.findByEmail>>;
+  let needsRehash = false;
+  try {
+    user = await usersDb.findByEmail(c.env, email);
+    if (!user || user.status !== 'active') {
+      // Vẫn tốn đúng chừng ấy CPU để thời gian phản hồi không tiết lộ điều gì.
+      await dummyHash(password || 'x');
+      throw badRequest('invalid_credentials', GENERIC_AUTH_ERROR);
+    }
+    const res = await verifyPassword(password, user.password_hash);
+    if (!res.ok) throw badRequest('invalid_credentials', GENERIC_AUTH_ERROR);
+    needsRehash = res.needsRehash;
+  } catch (err) {
+    // Bộ đếm rate limit đã tăng ở trên nhưng chỉ được xoá khi đăng nhập thành công.
+    // Nếu hỏng vì LỖI CỦA SERVER (D1 trục trặc, Worker bị ngắt) thì người dùng không
+    // có lỗi gì mà vẫn bị ăn vào hạn mức — và vài lần như vậy là bị khoá oan.
+    // Sai mật khẩu thì vẫn tính, vì đó đúng là một lần thử.
+    if (!(err instanceof ApiError)) {
+      await reset(c.env, [ipBucket, emailBucket]).catch(() => {});
+    }
+    throw err;
   }
 
-  const { ok, needsRehash } = await verifyPassword(password, user.password_hash);
-  if (!ok) throw badRequest('invalid_credentials', GENERIC_AUTH_ERROR);
-
-  // Nâng tham số băm trong im lặng khi hàng cũ dùng số vòng thấp hơn hiện tại.
+  // Băm lại trong im lặng khi tham số của hàng khác cấu hình hiện tại.
   if (needsRehash) {
     const fresh = await hashPassword(password);
     c.executionCtx.waitUntil(usersDb.updatePasswordHash(c.env, user.id, fresh, false));
@@ -95,24 +109,37 @@ export async function login(c: Ctx): Promise<Response> {
   });
   setSessionCookie(c, token);
 
-  // Pages Functions không có cron trigger. Việc định kỳ do Worker trong cron-worker/
-  // đảm nhiệm — nhưng ứng dụng KHÔNG ĐƯỢC phụ thuộc vào việc worker đó còn sống.
-  // Một cron chết mà không có lớp này nghĩa là ba bảng phình ra vô hạn: phiên hết
-  // hạn, bộ đếm rate limit của các cửa sổ đã qua, và hàng đợi vector mồ côi.
+  // Pages Functions không có cron trigger, và dự án cố ý KHÔNG dựng Worker riêng chỉ
+  // để có lịch. Thay vào đó, việc dọn dẹp bám theo chính lưu lượng: khoảng 5% số lần
+  // đăng nhập kéo theo một lượt dọn, chạy ngoài luồng phản hồi qua waitUntil.
   //
-  // Nên dọn thêm theo kiểu cơ hội, trên khoảng 5% số lần đăng nhập, chạy ngoài luồng
-  // phản hồi qua waitUntil. Rẻ, không cần lịch, và giữ cho hệ thống tự bảo trì được
-  // ngay cả khi cron im lặng chết. /api/health vẫn báo cron_stale để biết điều đó.
+  // Ba bảng này phình ra vô hạn nếu không ai dọn: phiên đã hết hạn, bộ đếm rate limit
+  // của các cửa sổ đã qua, và hàng đợi vector mồ côi. Việc index ý tưởng thì KHÔNG nằm
+  // ở đây — nó do người dùng bấm nút "Đồng bộ lại index", vì đó là việc họ nhìn thấy
+  // kết quả và biết khi nào cần.
   if (Math.random() < 0.05) {
-    c.executionCtx.waitUntil(
-      Promise.allSettled([
-        sweepExpiredSessions(c.env),
-        sweepRateLimits(c.env),
-        drainVectorGc(c.env, 50),
-      ]).then(() => undefined),
-    );
+    c.executionCtx.waitUntil(sweepInBackground(c.env));
   }
   return c.json({ user: userDto(user) });
+}
+
+/**
+ * Một lượt dọn cơ hội. Ghi lại kết quả vào maintenance_runs để /api/health cho biết
+ * việc bảo trì lần cuối chạy khi nào — không có lịch thì đó là cách duy nhất để biết
+ * nó còn diễn ra hay đã ngừng.
+ */
+async function sweepInBackground(env: Ctx['env']): Promise<void> {
+  const [sessions, rate, vector] = await Promise.allSettled([
+    sweepExpiredSessions(env),
+    sweepRateLimits(env),
+    drainVectorGc(env, 50),
+  ]);
+  const n = (r: PromiseSettledResult<number>) => (r.status === 'fulfilled' ? r.value : 0);
+  await recordMaintenanceRun(
+    env,
+    { sessions: n(sessions), rate: n(rate), vector: n(vector), reindexed: 0 },
+    'auto',
+  ).catch((err) => console.error('recordMaintenanceRun failed', err));
 }
 
 export async function logout(c: Ctx): Promise<Response> {

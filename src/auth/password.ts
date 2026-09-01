@@ -6,46 +6,55 @@ import { constantTimeEqual } from '../util/hash';
  * bcrypt/argon2 vì cả hai là native binding, không chạy được trên workerd.
  *
  * ───────────────────────────────────────────────────────────────────────────────
- * RÀNG BUỘC NỀN TẢNG QUYẾT ĐỊNH THIẾT KẾ NÀY
+ * HAI RÀNG BUỘC QUYẾT ĐỊNH THAM SỐ NÀY, VÀ CHÚNG SIẾT TỪ HAI PHÍA
  *
- * workerd CHẶN CỨNG số vòng PBKDF2 ở 100.000. Vượt qua sẽ ném thẳng:
+ * (1) workerd CHẶN CỨNG số vòng PBKDF2 ở 100.000. Vượt qua sẽ ném thẳng:
  *
- *   NotSupportedError: Pbkdf2 failed: iteration counts above 100000 are not
- *   supported (requested 210000).
+ *       NotSupportedError: Pbkdf2 failed: iteration counts above 100000 are not
+ *       supported (requested 210000).
  *
- * Đây KHÔNG phải giới hạn theo gói cước — nâng lên Workers Paid cũng không gỡ được.
- * Nó là trần của runtime.
+ *     Không phải giới hạn theo gói cước — nâng gói cũng không gỡ được.
  *
- * Hệ quả: không thể tăng độ khó bằng cách tăng số vòng. Cách duy nhất còn lại là
- * tăng chi phí MỖI VÒNG, tức là chọn hàm băm đắt hơn. Số đo thực tế
- * (`node scripts/bench-pbkdf2.mjs`), mỗi lần băm:
+ * (2) Gói Workers FREE giới hạn ~10ms CPU mỗi lần gọi, và PBKDF2 là CPU thuần.
+ *     Vượt qua thì Cloudflare ngắt request với `Error 1102: Worker exceeded
+ *     resource limits`. Cái bẫy ở đây: nó KHÔNG hỏng ngay từ request đầu. Đo trên
+ *     production, bản dùng SHA-512 100.000 vòng (66ms) chạy trót lọt 18–21 lần
+ *     đăng nhập liên tiếp rồi mới bung 1102 — nghĩa là kiểm thử lẻ tẻ hoàn toàn
+ *     không phát hiện được, chỉ tải liên tục mới lộ ra.
  *
- *     SHA-256, 100.000 vòng  →  ~20 ms
- *     SHA-512, 100.000 vòng  →  ~66 ms   ← đang dùng, gấp ~3,4 lần công
+ * Số đo thực tế (`node scripts/bench-pbkdf2.mjs`), mỗi lần băm:
  *
- * Vì vậy dùng SHA-512 ở đúng trần 100.000 vòng. Công bỏ ra tương đương khoảng
- * 340.000 vòng SHA-256.
+ *     SHA-256   20.000 vòng →  ~4 ms
+ *     SHA-256   30.000 vòng →  ~7 ms   ← ĐANG DÙNG
+ *     SHA-256   50.000 vòng →  ~12 ms  vượt ngân sách Free
+ *     SHA-512  100.000 vòng →  ~66 ms  vượt xa, gây Error 1102
  *
- * TRUNG THỰC VỀ MỨC BẢO VỆ: OWASP khuyến nghị 600.000 vòng cho PBKDF2-HMAC-SHA256
- * hoặc 210.000 vòng cho PBKDF2-HMAC-SHA512. Trần của workerd khiến cấu hình này
- * chỉ đạt khoảng một nửa mức khuyến nghị cho SHA-512. Đó là mức tốt nhất PBKDF2
- * đạt được trên nền tảng này. Muốn vượt qua thì phải đổi sang Argon2id biên dịch
- * ra WASM — đắt hơn nhiều về công sức và kích thước bundle, chỉ nên làm nếu mô
- * hình đe doạ thực sự đòi hỏi. Bù lại, hệ thống có hai lớp khác: mật khẩu tối
- * thiểu 10 ký tự và rate limit đăng nhập trong src/auth/ratelimit.ts.
+ * MỨC BẢO VỆ THỰC TẾ, NÓI THẲNG: OWASP khuyến nghị 600.000 vòng cho
+ * PBKDF2-HMAC-SHA256. Cấu hình này thấp hơn khoảng 20 lần. Đây là lựa chọn có ý
+ * thức để ở lại gói Free, không phải sơ suất. Mật khẩu vẫn có salt ngẫu nhiên
+ * riêng, vẫn được kéo dài, và vẫn hơn hẳn hash trần — nhưng nếu database bị lộ
+ * thì mật khẩu yếu sẽ bị dò ra nhanh hơn nhiều so với một hệ thống đúng chuẩn.
  *
- * CHI PHÍ CPU: ~66 ms mỗi lần đăng nhập/đăng ký. Nằm gọn trong hạn mức 30 giây
- * của gói Workers Paid, nhưng vượt hạn mức 10 ms của gói Free — mà ngay cả
- * SHA-256 ở 100.000 vòng (~20 ms) cũng đã vượt. Không có cách nào làm một hàm băm
- * mật khẩu đúng chuẩn mà rẻ; đó chính là mục đích của nó.
+ * Hai lớp bù đắp đang có: mật khẩu tối thiểu 10 ký tự (src/util/validate.ts) và
+ * rate limit đăng nhập (src/auth/ratelimit.ts). Cả hai chỉ chặn dò trực tuyến;
+ * không lớp nào giúp được khi kẻ tấn công đã có bản dump database.
+ *
+ * MUỐN MẠNH HƠN: nâng lên Workers Paid (hạn mức CPU 30 giây) rồi đổi hai hằng số
+ * dưới đây thành SHA-512 / 100.000 vòng. KHÔNG cần migration: cả hàm băm lẫn số
+ * vòng nằm trong từng chuỗi hash, verifyPassword đọc tham số của từng hàng, và
+ * lần đăng nhập thành công kế tiếp sẽ tự băm lại theo mức mới.
  * ───────────────────────────────────────────────────────────────────────────────
  */
 
 /** Trần cứng của workerd. Đặt cao hơn sẽ ném NotSupportedError khi chạy thật. */
 export const WORKERD_MAX_ITERATIONS = 100_000;
 
-export const PBKDF2_ITERATIONS = WORKERD_MAX_ITERATIONS;
-export const PBKDF2_HASH = 'SHA-512' as const;
+/**
+ * Chọn cho ngân sách CPU ~10ms của gói Workers Free. Nâng lên Paid thì đổi thành
+ * `WORKERD_MAX_ITERATIONS` + `'SHA-512'` — xem phần giải thích ở trên.
+ */
+export const PBKDF2_ITERATIONS = 30_000;
+export const PBKDF2_HASH = 'SHA-256' as const;
 
 const SALT_BYTES = 16;
 const KEY_BYTES = 32;
@@ -131,9 +140,14 @@ export async function verifyPassword(password: string, stored: string): Promise<
 
   const actual = await derive(password, salt, iterations, hash);
   const ok = constantTimeEqual(actual, expected);
-  // Băm lại khi hash cũ dùng ÍT vòng hơn, hoặc dùng hàm băm RẺ hơn mức hiện tại.
-  const weaker = iterations < PBKDF2_ITERATIONS || hash !== PBKDF2_HASH;
-  return { ok, needsRehash: ok && weaker };
+  // Băm lại khi tham số của hàng KHÁC cấu hình hiện tại — theo cả hai chiều.
+  //
+  // Thường thì đó là nâng cấp. Nhưng ở đây ràng buộc quyết định là ngân sách CPU
+  // của nền tảng, không phải "càng mạnh càng tốt": một hàng còn giữ tham số cũ đắt
+  // hơn ngân sách hiện tại sẽ khiến chính người dùng đó gặp Error 1102 khi đăng
+  // nhập nhiều lần. Nên mục tiêu là mọi hàng hội tụ về đúng cấu hình đang chạy.
+  const differs = iterations !== PBKDF2_ITERATIONS || hash !== PBKDF2_HASH;
+  return { ok, needsRehash: ok && differs };
 }
 
 /**

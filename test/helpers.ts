@@ -5,6 +5,7 @@ import { env } from 'cloudflare:test';
 // schema thật và trở nên vô dụng đúng lúc cần nhất.
 import initSql from '../migrations/0001_init.sql?raw';
 import cronSql from '../migrations/0002_cron_heartbeat.sql?raw';
+import renameSql from '../migrations/0003_rename_maintenance.sql?raw';
 import type { Env } from '../src/types';
 
 export function testEnv(): Env {
@@ -14,11 +15,11 @@ export function testEnv(): Env {
 export async function migrate(): Promise<void> {
   const db = testEnv().DB;
   const already = await db
-    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='users'`)
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='maintenance_runs'`)
     .first();
   if (already) return;
 
-  const statements = [initSql, cronSql]
+  const statements = [initSql, cronSql, renameSql]
     .join('\n')
     .split(';')
     .map((s) =>

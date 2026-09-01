@@ -111,8 +111,9 @@ export async function revokeAllSessions(
 }
 
 /**
- * Dọn phiên hết hạn. Pages không có cron, nên hàm này được gọi hai đường:
- * cơ hội (~0,5% số request, qua waitUntil) và định kỳ từ /api/admin/cron.
+ * Dọn phiên hết hạn. Pages Functions không có cron trigger và dự án cố ý không dùng
+ * Worker riêng để có, nên hàm này chạy theo kiểu cơ hội trên một phần nhỏ số lần
+ * đăng nhập (qua waitUntil), hoặc khi gọi tay POST /api/admin/maintenance.
  */
 export async function sweepExpiredSessions(env: Env, limit = 200): Promise<number> {
   const res = await env.DB.prepare(
@@ -125,17 +126,19 @@ export async function sweepExpiredSessions(env: Env, limit = 200): Promise<numbe
 }
 
 /**
- * Ghi nhịp tim của cron. Một cron chết âm thầm thì không có dấu hiệu gì, nên trạng
- * thái phải nằm ở nơi ứng dụng tự đọc được — /api/health báo ra `cron_last_run_at`
- * và `cron_stale`, biến một hỏng hóc vô hình thành một con số nhìn thấy được.
+ * Ghi lại lần bảo trì gần nhất. Không có lịch chạy nghĩa là không có cách nào biết
+ * việc dọn dẹp còn diễn ra hay đã ngừng, trừ khi ứng dụng tự ghi lại — /api/health
+ * đọc ra `maintenance_last_run_at`, biến một trạng thái vô hình thành con số.
+ *
+ * `source`: 'auto' = dọn cơ hội khi đăng nhập, 'manual' = gọi /api/admin/maintenance.
  */
-export async function recordCronRun(
+export async function recordMaintenanceRun(
   env: Env,
   counts: { sessions: number; rate: number; vector: number; reindexed: number },
-  source: 'cron' | 'manual',
+  source: 'auto' | 'manual',
 ): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO cron_runs (id, ran_at, sessions_gc, rate_gc, vector_gc, reindexed, source)
+    `INSERT INTO maintenance_runs (id, ran_at, sessions_gc, rate_gc, vector_gc, reindexed, source)
      VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
      ON CONFLICT(id) DO UPDATE SET
        ran_at = ?1, sessions_gc = ?2, rate_gc = ?3, vector_gc = ?4, reindexed = ?5, source = ?6`,

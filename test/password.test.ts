@@ -44,14 +44,20 @@ describe('băm mật khẩu', () => {
     expect(r.needsRehash).toBe(true);
   });
 
-  it('hash SHA-256 cũ vẫn kiểm tra được, nhưng bị đánh dấu cần nâng cấp', async () => {
-    // Đây là đường nâng cấp thuật toán: hàng cũ vẫn đăng nhập được, và lần đăng
-    // nhập thành công đó sẽ tự băm lại sang tham số hiện tại.
-    const stored = await hashPassword('matkhau-rat-dai-123', 1000, 'SHA-256');
-    expect(stored.startsWith('pbkdf2$sha256$')).toBe(true);
-    const r = await verifyPassword('matkhau-rat-dai-123', stored);
-    expect(r.ok).toBe(true);
-    expect(r.needsRehash).toBe(true);
+  it('hash dùng tham số khác cấu hình hiện tại đều bị đánh dấu băm lại', async () => {
+    // Theo CẢ HAI chiều. Yếu hơn thì rõ rồi. Nhưng mạnh hơn cũng phải băm lại: ràng
+    // buộc quyết định ở đây là ngân sách CPU của gói Free, nên một hàng còn giữ
+    // tham số cũ đắt hơn sẽ khiến chính người dùng đó gặp Error 1102.
+    for (const [iters, hash] of [
+      [1000, 'SHA-256'],    // yếu hơn
+      [100_000, 'SHA-512'], // MẠNH hơn, nhưng vượt ngân sách CPU
+      [30_000, 'SHA-512'],  // cùng số vòng, hàm băm khác
+    ] as Array<[number, string]>) {
+      const stored = await hashPassword('matkhau-rat-dai-123', iters, hash);
+      const r = await verifyPassword('matkhau-rat-dai-123', stored);
+      expect(r.ok, `phải kiểm tra được: ${hash}/${iters}`).toBe(true);
+      expect(r.needsRehash, `phải đòi băm lại: ${hash}/${iters}`).toBe(true);
+    }
   });
 
   it('hash ở đúng tham số hiện tại thì không đòi băm lại', async () => {
@@ -72,6 +78,11 @@ describe('băm mật khẩu', () => {
 
   it('tham số hiện tại nằm đúng trong trần nền tảng và thực sự chạy được', async () => {
     expect(PBKDF2_ITERATIONS).toBeLessThanOrEqual(WORKERD_MAX_ITERATIONS);
+    // Ngân sách CPU của gói Free là ~10ms. 30.000 vòng SHA-256 đo được ~7ms; vượt
+    // qua thì Cloudflare ngắt bằng Error 1102 — và chỉ lộ ra khi đăng nhập liên
+    // tục, không lộ ra khi thử lẻ. Chốt trần ở đây để không ai vô tình nâng lên.
+    expect(PBKDF2_ITERATIONS).toBeLessThanOrEqual(30_000);
+    expect(PBKDF2_HASH).toBe('SHA-256');
     // Chạy thật ở tham số production, trong workerd thật — đây là bài test đáng lẽ
     // đã bắt được lỗi 210.000 vòng trước khi nó lên tới deployment.
     const stored = await hashPassword('matkhau-rat-dai-123');

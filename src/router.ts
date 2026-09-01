@@ -84,6 +84,6 @@ app.get('/tags', ideas.listTagsRoute);
 app.post('/reindex', admin.reindexMine);
 
 app.post('/admin/reindex', admin.reindexAdmin);
-app.post('/admin/cron', admin.cron);
+app.post('/admin/maintenance', admin.maintenance);
 
 export default app;
