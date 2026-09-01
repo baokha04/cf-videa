@@ -6,6 +6,7 @@ import {
   revokeAllSessions,
   revokeSession,
   sweepExpiredSessions,
+  recordCronRun,
 } from '../src/auth/session';
 import { migrate, testEnv } from './helpers';
 import { hashPassword } from '../src/auth/password';
@@ -134,3 +135,30 @@ describe('phiên đăng nhập', () => {
     expect(results.length).toBe(0);
   });
 });
+
+describe('nhịp tim cron', () => {
+  beforeEach(async () => {
+    await migrate();
+    await testEnv().DB.prepare('DELETE FROM cron_runs').run();
+  });
+
+  it('ghi và ghi đè đúng một hàng duy nhất', async () => {
+    await recordCronRun(testEnv(), { sessions: 3, rate: 1, vector: 0, reindexed: 2 }, 'cron');
+    let row = await testEnv()
+      .DB.prepare('SELECT * FROM cron_runs')
+      .first<{ id: number; sessions_gc: number; source: string; ran_at: number }>();
+    expect(row?.id).toBe(1);
+    expect(row?.sessions_gc).toBe(3);
+    expect(row?.source).toBe('cron');
+
+    await recordCronRun(testEnv(), { sessions: 9, rate: 0, vector: 0, reindexed: 0 }, 'manual');
+    const { results } = await testEnv().DB.prepare('SELECT * FROM cron_runs').all();
+    // Ghi đè, không chất đống: bảng luôn đúng một hàng.
+    expect(results).toHaveLength(1);
+    row = await testEnv()
+      .DB.prepare('SELECT * FROM cron_runs')
+      .first<{ id: number; sessions_gc: number; source: string; ran_at: number }>();
+    expect(row?.sessions_gc).toBe(9);
+    expect(row?.source).toBe('manual');
+  });
+})

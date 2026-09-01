@@ -2,7 +2,7 @@ import type { Ctx } from '../http/guard';
 import { readJson, requireAdmin, requireUser } from '../http/guard';
 import { badRequest } from '../http/response';
 import * as ideasDb from '../db/ideas';
-import { sweepExpiredSessions } from '../auth/session';
+import { recordCronRun, sweepExpiredSessions } from '../auth/session';
 import { sweepRateLimits } from '../auth/ratelimit';
 import { drainVectorGc, reconcile } from '../vec/sync';
 
@@ -13,12 +13,25 @@ export async function health(c: Ctx): Promise<Response> {
       `SELECT (SELECT COUNT(*) FROM ideas
                 WHERE embedded_hash IS NULL OR embedded_hash <> content_hash) AS dirty_ideas,
               (SELECT COUNT(*) FROM vector_gc)  AS gc_pending,
-              (SELECT COUNT(*) FROM sessions WHERE expires_at > ?1) AS sessions_active`,
+              (SELECT COUNT(*) FROM sessions WHERE expires_at > ?1) AS sessions_active,
+              (SELECT ran_at FROM cron_runs WHERE id = 1)           AS cron_last_run_at,
+              (SELECT source FROM cron_runs WHERE id = 1)           AS cron_last_source`,
     )
       .bind(Date.now())
-      .first<{ dirty_ideas: number; gc_pending: number; sessions_active: number }>();
+      .first<{
+        dirty_ideas: number;
+        gc_pending: number;
+        sessions_active: number;
+        cron_last_run_at: number | null;
+        cron_last_source: string | null;
+      }>();
     out['d1'] = 'ok';
     Object.assign(out, row ?? {});
+
+    // Cron chạy mỗi 15 phút. Quá 45 phút không thấy nhịp nào là nó đã chết —
+    // và đây là chỗ duy nhất điều đó nhìn thấy được mà không cần đọc log.
+    const last = row?.cron_last_run_at ?? null;
+    out['cron_stale'] = last === null ? 'chưa từng chạy' : Date.now() - last > 45 * 60_000;
   } catch (err) {
     out['ok'] = false;
     out['d1'] = `error: ${String(err).slice(0, 120)}`;
@@ -76,6 +89,11 @@ export async function cron(c: Ctx): Promise<Response> {
     drainVectorGc(c.env, 100),
   ]);
   const reindexed = await reconcile(c.env, 50);
+  await recordCronRun(
+    c.env,
+    { sessions: sessionsGc, rate: rateGc, vector: vecGc, reindexed: reindexed.processed },
+    'manual',
+  );
   return c.json({
     sessions_gc: sessionsGc,
     rate_gc: rateGc,

@@ -17,7 +17,7 @@
  * chặng mạng nào để hỏng — và vẫn là đúng một bản code, không nhân bản logic.
  */
 import type { Env } from '../../src/types';
-import { sweepExpiredSessions } from '../../src/auth/session';
+import { recordCronRun, sweepExpiredSessions } from '../../src/auth/session';
 import { sweepRateLimits } from '../../src/auth/ratelimit';
 import { drainVectorGc, reconcile } from '../../src/vec/sync';
 
@@ -29,6 +29,13 @@ export default {
     const rate = await sweepRateLimits(env);
     const gc = await drainVectorGc(env, 100);
     const reindexed = await reconcile(env, 50);
+    // Ghi nhịp tim vào D1. Log không phải lúc nào cũng lấy được, nhưng D1 thì
+    // ứng dụng tự đọc được — /api/health biến một cron chết âm thầm thành con số.
+    await recordCronRun(
+      env,
+      { sessions, rate, vector: gc, reindexed: reindexed.processed },
+      'cron',
+    );
     console.log(
       JSON.stringify({ sessions_gc: sessions, rate_gc: rate, vector_gc: gc, reindexed }),
     );

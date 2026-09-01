@@ -123,3 +123,23 @@ export async function sweepExpiredSessions(env: Env, limit = 200): Promise<numbe
     .run();
   return res.meta.changes ?? 0;
 }
+
+/**
+ * Ghi nhịp tim của cron. Một cron chết âm thầm thì không có dấu hiệu gì, nên trạng
+ * thái phải nằm ở nơi ứng dụng tự đọc được — /api/health báo ra `cron_last_run_at`
+ * và `cron_stale`, biến một hỏng hóc vô hình thành một con số nhìn thấy được.
+ */
+export async function recordCronRun(
+  env: Env,
+  counts: { sessions: number; rate: number; vector: number; reindexed: number },
+  source: 'cron' | 'manual',
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO cron_runs (id, ran_at, sessions_gc, rate_gc, vector_gc, reindexed, source)
+     VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6)
+     ON CONFLICT(id) DO UPDATE SET
+       ran_at = ?1, sessions_gc = ?2, rate_gc = ?3, vector_gc = ?4, reindexed = ?5, source = ?6`,
+  )
+    .bind(now(), counts.sessions, counts.rate, counts.vector, counts.reindexed, source)
+    .run();
+}

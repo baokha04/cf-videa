@@ -4,6 +4,7 @@ import { env } from 'cloudflare:test';
 // schema của production — nếu test tự viết lại CREATE TABLE thì nó sẽ trôi khỏi
 // schema thật và trở nên vô dụng đúng lúc cần nhất.
 import initSql from '../migrations/0001_init.sql?raw';
+import cronSql from '../migrations/0002_cron_heartbeat.sql?raw';
 import type { Env } from '../src/types';
 
 export function testEnv(): Env {
@@ -17,7 +18,8 @@ export async function migrate(): Promise<void> {
     .first();
   if (already) return;
 
-  const statements = initSql
+  const statements = [initSql, cronSql]
+    .join('\n')
     .split(';')
     .map((s) =>
       s
