@@ -1,0 +1,3 @@
+# Sao chép thành .dev.vars (file này đã được gitignore) rồi điền giá trị thật.
+# Trên môi trường thật dùng: wrangler pages secret put ADMIN_TOKEN
+ADMIN_TOKEN=doi-thanh-mot-chuoi-ngau-nhien-dai
