@@ -4,7 +4,7 @@ import { hashPassword } from '../src/auth/password';
 import * as usersDb from '../src/db/users';
 import * as ideasDb from '../src/db/ideas';
 import * as likesDb from '../src/db/likes';
-import { setIdeaTags, listTags } from '../src/db/tags';
+import { setIdeaTags, listTags, tagsForIdeas } from '../src/db/tags';
 
 /**
  * Ma trận cách ly đa người dùng. Đây là bất biến bảo mật quan trọng nhất của app:
@@ -89,6 +89,24 @@ describe('cách ly giữa các tài khoản', () => {
     await likesDb.like(testEnv(), B.id, ideaOfB.id);
     expect(await likesDb.likedIds(testEnv(), A.id)).toHaveLength(0);
     expect(await likesDb.likedIds(testEnv(), B.id)).toEqual([ideaOfB.id]);
+  });
+
+  it('tagsForIdeas không trả tag chéo tài khoản, kể cả khi bị gọi với id lạ', async () => {
+    // Hàm này không nhận userId vì nó cũng phục vụ đối soát toàn hệ thống. Bảo đảm
+    // nằm trong phép join i.user_id = t.user_id, nên gọi sai cũng không rò rỉ được.
+    await setIdeaTags(testEnv(), A.id, ideaOfA.id, ['bí-mật-của-a']);
+    // Cố tình gán một tag của B cho ý tưởng của A ở tầng thấp nhất — mô phỏng lỗi
+    // dữ liệu hoặc một lối gọi sai trong tương lai.
+    const tagB = await testEnv()
+      .DB.prepare(`INSERT INTO tags (id, user_id, name, created_at)
+                   VALUES ('tag-cua-b', ?1, 'tag-cua-b', 0) RETURNING id`)
+      .bind(B.id).first<{ id: string }>();
+    await testEnv()
+      .DB.prepare(`INSERT INTO idea_tags (idea_id, tag_id) VALUES (?1, ?2)`)
+      .bind(ideaOfA.id, tagB!.id).run();
+
+    const map = await tagsForIdeas(testEnv(), [ideaOfA.id]);
+    expect(map.get(ideaOfA.id)).toEqual(['bí-mật-của-a']);
   });
 
   it('lọc theo tag không lấy được ý tưởng của người khác qua tag cùng tên', async () => {
