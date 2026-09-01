@@ -23,7 +23,8 @@ export async function recommendations(c: Ctx): Promise<Response> {
 
   const taste = await getTasteVector(c.env, user.id);
 
-  // Chưa thích ý tưởng nào → không bao giờ trả danh sách rỗng cho người mới.
+  // Chưa thích ý tưởng nào, hoặc Vectorize không với tới được → không bao giờ trả
+  // danh sách rỗng cho người mới.
   if (!taste) {
     const { rows } = await ideasDb.list(c.env, user.id, { status: 'idea' }, limit, null);
     return c.json({
@@ -34,11 +35,23 @@ export async function recommendations(c: Ctx): Promise<Response> {
     });
   }
 
-  const matches = await queryIdeas(c.env, taste.vector, {
-    userId: user.id,
-    topK: Math.min(limit * 3, 100),
-    status: ['idea', 'scripted'],
-  });
+  let matches;
+  try {
+    matches = await queryIdeas(c.env, taste.vector, {
+      userId: user.id,
+      topK: Math.min(limit * 3, 100),
+      status: ['idea', 'scripted'],
+    });
+  } catch (err) {
+    console.error('recommendations: truy vấn Vectorize thất bại', err);
+    const { rows } = await ideasDb.list(c.env, user.id, { status: 'idea' }, limit, null);
+    return c.json({
+      items: await hydrate(c, user.id, rows),
+      basis: 'cold_start',
+      source_count: taste.sourceCount,
+      message: 'Chưa gợi ý theo gu được lúc này, đang hiển thị ý tưởng mới nhất.',
+    });
+  }
 
   const likedIds = new Set(await likesDb.likedIds(c.env, user.id, 200));
   const ids = matches.map((m) => m.id).filter((id) => !likedIds.has(id));

@@ -48,7 +48,16 @@ export async function getTasteVector(env: Env, userId: string): Promise<TasteVec
     if (v) return { vector: v, sourceCount: cached.source_count };
   }
 
-  const vecMap = await getVectors(env, liked);
+  // Vectorize không với tới được (chưa cấu hình, mất mạng, sự cố dịch vụ) thì
+  // trả null để tầng trên lùi về gợi ý cold-start — không bao giờ để lỗi hạ tầng
+  // của một tính năng phụ làm hỏng cả trang.
+  let vecMap: Map<string, number[]>;
+  try {
+    vecMap = await getVectors(env, liked);
+  } catch (err) {
+    console.error('getTasteVector: không lấy được vector', err);
+    return null;
+  }
   if (vecMap.size === 0) return null;
 
   const mean = new Array<number>(DIMENSIONS).fill(0);

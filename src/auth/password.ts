@@ -5,11 +5,27 @@ import { constantTimeEqual } from '../util/hash';
  * Băm mật khẩu bằng PBKDF2-HMAC-SHA256 qua WebCrypto — không cần nodejs_compat,
  * không cần bcrypt/argon2 (cả hai đều là native binding, không chạy trên workerd).
  *
- * ĐÁNH ĐỔI CPU, đọc trước khi chỉnh số: Workers/Pages tính CPU time, và PBKDF2
- * là CPU thuần. 210.000 vòng (khuyến nghị OWASP) nằm gọn trong hạn mức của gói
- * Paid nhưng sẽ VƯỢT hạn mức 10ms của gói Free. Số vòng được nhúng vào chuỗi hash
- * nên đây là hằng số chỉnh được, không phải cam kết kiến trúc: hạ xuống nếu chạy
- * gói Free, và đo thật bằng `wrangler pages deployment tail` trước khi chốt.
+ * ĐÁNH ĐỔI CPU — ĐỌC TRƯỚC KHI CHỈNH SỐ.
+ *
+ * Workers/Pages tính CPU time, và PBKDF2 là CPU thuần. Số đo thực tế trên WebCrypto
+ * (chạy `node scripts/bench-pbkdf2.mjs`), mỗi lần băm:
+ *
+ *      50.000 vòng  →   ~9 ms
+ *     100.000 vòng  →  ~18 ms
+ *     210.000 vòng  →  ~37 ms   ← mức đang dùng (khuyến nghị OWASP)
+ *     600.000 vòng  →  ~106 ms
+ *
+ * Nghĩa là: mức này cần GÓI WORKERS PAID (hạn mức CPU mặc định 30 giây). Trên gói
+ * Free (10 ms CPU mỗi lần gọi) thì ngay cả 50.000 vòng cũng đã sát trần và đăng
+ * nhập sẽ bị ngắt. Không có cách nào làm một hàm băm mật khẩu đúng chuẩn mà rẻ —
+ * đó chính là mục đích của nó.
+ *
+ * Nếu buộc phải chạy gói Free: hạ số vòng xuống và GHI RÕ đánh đổi trong README.
+ * Tuyệt đối không thay bằng SHA-256 trần hay MD5 — đó không phải giải pháp.
+ *
+ * Số vòng được nhúng vào chuỗi hash nên đây là hằng số chỉnh được, không phải cam
+ * kết kiến trúc: verifyPassword() đọc số vòng của từng hàng, và đăng nhập thành công
+ * với số vòng cũ sẽ tự băm lại theo mức hiện tại.
  */
 export const PBKDF2_ITERATIONS = 210_000;
 const SALT_BYTES = 16;

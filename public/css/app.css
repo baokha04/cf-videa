@@ -1,0 +1,145 @@
+:root {
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --border: #e2e2e5;
+  --text: #17171a;
+  --muted: #6b6b73;
+  --accent: #2f5fdd;
+  --accent-fg: #ffffff;
+  --danger: #b3261e;
+  --ok: #17683a;
+  --warn: #8a5a00;
+  --warn-bg: #fff6e0;
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 14px rgba(0, 0, 0, .04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131316;
+    --surface: #1c1c21;
+    --border: #33333b;
+    --text: #ececf0;
+    --muted: #9a9aa4;
+    --accent: #7c9dff;
+    --accent-fg: #10121a;
+    --danger: #ff8a80;
+    --ok: #6ee7a8;
+    --warn: #ffca6b;
+    --warn-bg: #33290f;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+a { color: var(--accent); }
+
+header.site {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 18px;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+header.site .brand { font-weight: 650; margin-right: auto; text-decoration: none; color: var(--text); }
+header.site nav { display: flex; gap: 16px; flex-wrap: wrap; }
+header.site nav a { text-decoration: none; }
+header.site nav a[aria-current="page"] { font-weight: 600; text-decoration: underline; }
+header.site .who { color: var(--muted); font-size: 13px; }
+
+main { max-width: 960px; margin: 0 auto; padding: 24px 20px 64px; }
+main.narrow { max-width: 420px; }
+
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 17px; margin: 28px 0 10px; }
+p.sub { color: var(--muted); margin: 0 0 20px; }
+
+label { display: block; font-size: 13px; font-weight: 550; margin: 14px 0 5px; }
+
+input, select, textarea, button {
+  font: inherit;
+  color: inherit;
+}
+
+input, select, textarea {
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+textarea { min-height: 110px; resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+button {
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .55; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.danger { color: var(--danger); }
+button.link { border: 0; background: none; color: var(--accent); padding: 0; text-decoration: underline; }
+
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.row > * { flex: 1 1 150px; }
+.row > .shrink { flex: 0 0 auto; }
+.actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow);
+}
+.list { display: grid; gap: 12px; margin-top: 16px; }
+
+.idea h3 { margin: 0 0 4px; font-size: 16px; }
+.idea h3 a { text-decoration: none; color: var(--text); }
+.idea h3 a:hover { text-decoration: underline; }
+.idea .hook { color: var(--muted); margin: 0 0 10px; }
+.idea .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.chip {
+  font-size: 12px;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--bg);
+}
+.chip.score { color: var(--ok); }
+.chip.pending { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
+
+.msg { padding: 10px 14px; border-radius: 8px; margin: 14px 0; }
+.msg.error { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.msg.ok { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+.msg.note { background: var(--warn-bg); color: var(--warn); }
+.msg:empty { display: none; }
+
+.empty { color: var(--muted); text-align: center; padding: 40px 20px; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 550; font-size: 13px; }
+
+/* Không dùng thuộc tính style= nội tuyến ở bất kỳ đâu: CSP trong public/_headers
+   đặt style-src 'self' nên trình duyệt sẽ chặn thẳng. Mọi khoảng cách kiểu này
+   phải là một lớp CSS. */
+.spaced { margin-top: 16px; }

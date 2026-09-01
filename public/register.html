@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Đăng ký · cf-videa</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main class="narrow">
+  <h1>Tạo tài khoản</h1>
+  <p class="sub">Lưu, tìm và khơi lại ý tưởng short video của riêng bạn.</p>
+  <div class="card">
+    <form id="f" novalidate>
+      <label for="display_name">Tên hiển thị <span class="muted small">(không bắt buộc)</span></label>
+      <input id="display_name" name="display_name" type="text" autocomplete="nickname" maxlength="80">
+
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required>
+
+      <label for="password">Mật khẩu</label>
+      <input id="password" name="password" type="password" autocomplete="new-password"
+             minlength="10" maxlength="200" required>
+      <p class="small muted" id="pwhint">Tối thiểu 10 ký tự. Một cụm từ dài dễ nhớ tốt hơn một chuỗi ngắn rắc rối.</p>
+
+      <div class="actions">
+        <button class="primary" type="submit" id="submit">Đăng ký</button>
+      </div>
+    </form>
+    <p id="msg" class="msg"></p>
+  </div>
+  <p class="small muted spaced">
+    Đã có tài khoản? <a href="/login">Đăng nhập</a>
+  </p>
+</main>
+<script type="module" src="/js/auth-pages.js"></script>
+</body>
+</html>

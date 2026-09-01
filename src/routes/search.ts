@@ -70,8 +70,13 @@ export async function similar(c: Ctx): Promise<Response> {
   if (!row) throw notFound('Không tìm thấy ý tưởng.');
 
   const limit = clampLimit(c.req.query('limit') ?? null, 10, 50);
-  const vecMap = await getVectors(c.env, [id]);
-  const vector = vecMap.get(id);
+  let vector: number[] | undefined;
+  try {
+    vector = (await getVectors(c.env, [id])).get(id);
+  } catch (err) {
+    console.error('similar: không lấy được vector', err);
+    vector = undefined;
+  }
   if (!vector) {
     return c.json({
       items: [],
@@ -80,10 +85,20 @@ export async function similar(c: Ctx): Promise<Response> {
     });
   }
 
-  const matches = await queryIdeas(c.env, vector, {
-    userId: user.id,
-    topK: Math.min(limit + 1, 100),
-  });
+  let matches;
+  try {
+    matches = await queryIdeas(c.env, vector, {
+      userId: user.id,
+      topK: Math.min(limit + 1, 100),
+    });
+  } catch (err) {
+    console.error('similar: truy vấn Vectorize thất bại', err);
+    return c.json({
+      items: [],
+      mode: 'unavailable',
+      message: 'Tính năng tìm ý tưởng tương tự tạm thời không dùng được.',
+    });
+  }
   const ids = matches.map((m) => m.id).filter((x) => x !== id);
   const rowMap = await ideasDb.getManyByIds(c.env, user.id, ids);
   const scores = new Map(matches.map((m) => [m.id, m.score]));

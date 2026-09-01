@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cf-videa</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main class="narrow">
+  <h1>cf-videa</h1>
+  <p class="sub">Đang chuyển hướng…</p>
+  <p><a href="/login">Đăng nhập</a> · <a href="/register">Đăng ký</a></p>
+</main>
+<script type="module">
+  import { get } from '/js/api.js';
+  // redirectOn401 = false: ở đây 401 là câu trả lời hợp lệ ("chưa đăng nhập"),
+  // không phải lỗi cần đá về trang login kèm ?next.
+  get('/api/auth/me').then(
+    () => location.replace('/app'),
+    () => location.replace('/login'),
+  );
+</script>
+</body>
+</html>

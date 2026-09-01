@@ -1,3 +1,10 @@
 # Sao chép thành .dev.vars (file này đã được gitignore) rồi điền giá trị thật.
 # Trên môi trường thật dùng: wrangler pages secret put ADMIN_TOKEN
+
+# stub = chạy offline, vector giả lập tất định, không gọi Workers AI, không tốn hạn mức.
+#        Tìm kiếm ngữ nghĩa sẽ lùi về tìm từ khoá — đó là hành vi đúng, không phải lỗi.
+# live = gọi Workers AI thật; cần thêm "remote": true vào binding trong wrangler.jsonc
+#        và index Vectorize phải tồn tại sẵn. Xem README.
+EMBEDDINGS_MODE=stub
+
 ADMIN_TOKEN=doi-thanh-mot-chuoi-ngau-nhien-dai

@@ -15,18 +15,24 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "videa-db", "database_id": "PLACEHOLDER_DEV" }
   ],
-  // Vectorize và Workers AI KHÔNG có giả lập local. `remote: true` cho phép
-  // `wrangler pages dev` proxy riêng hai binding này ra tài nguyên thật (cần
-  // `wrangler login`), trong khi D1 vẫn chạy local cho nhanh.
-  // Lưu ý: binding AI luôn gọi ra dịch vụ THẬT và tính hạn mức thật, kể cả khi dev.
-  // Muốn chạy hoàn toàn offline thì đặt EMBEDDINGS_MODE=stub trong .dev.vars.
+  // Vectorize và Workers AI KHÔNG có giả lập local — không có cách nào chạy chúng
+  // trong workerd trên máy bạn. Có hai chế độ dev, chọn bằng .dev.vars:
+  //
+  //  (a) Offline (mặc định): EMBEDDINGS_MODE=stub. D1 chạy local, tìm kiếm ngữ
+  //      nghĩa lùi về tìm từ khoá, ý tưởng mới hiện "chưa index". Đủ để làm auth,
+  //      CRUD và frontend mà không tốn hạn mức Workers AI nào.
+  //
+  //  (b) Có Vectorize + AI thật: thêm `"remote": true` vào hai binding dưới đây
+  //      (index PHẢI tồn tại sẵn, xem README) và đặt EMBEDDINGS_MODE=live.
+  //      Binding AI luôn gọi ra dịch vụ thật và tính hạn mức thật, kể cả khi dev.
   "vectorize": [
-    { "binding": "VEC", "index_name": "videa-ideas", "remote": true }
+    { "binding": "VEC", "index_name": "videa-ideas" }
   ],
-  "ai": { "binding": "AI", "remote": true },
+  "ai": { "binding": "AI" },
   "vars": {
     "APP_ENV": "dev",
     "COOKIE_NAME": "__Host-videa_sid",
+    // .dev.vars ghi đè giá trị này khi dev; đặt stub để chạy offline.
     "EMBEDDINGS_MODE": "live"
   },
 

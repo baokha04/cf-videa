@@ -186,41 +186,40 @@ export async function list(
 ): Promise<{ rows: IdeaRow[]; nextCursor: string | null }> {
   const where: string[] = ['i.user_id = ?1'];
   const binds: unknown[] = [userId];
-  const p = () => `?${binds.length + 1}`;
+  // Đẩy giá trị vào mảng bind rồi trả về placeholder tương ứng NGAY tại chỗ.
+  // Tách hai việc này ra (sinh placeholder trước, push sau) là cách chắc chắn sinh
+  // ra hai placeholder trùng số trong cùng một mệnh đề.
+  const bind = (v: unknown): string => {
+    binds.push(v);
+    return `?${binds.length}`;
+  };
 
-  if (filters.status) {
-    where.push(`i.status = ${p()}`);
-    binds.push(filters.status);
-  }
-  if (filters.platform) {
-    where.push(`i.platform = ${p()}`);
-    binds.push(filters.platform);
-  }
-  if (filters.niche) {
-    where.push(`i.niche = ${p()}`);
-    binds.push(filters.niche);
-  }
+  if (filters.status) where.push(`i.status = ${bind(filters.status)}`);
+  if (filters.platform) where.push(`i.platform = ${bind(filters.platform)}`);
+  if (filters.niche) where.push(`i.niche = ${bind(filters.niche)}`);
   if (filters.q) {
     const like = `%${filters.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
     where.push(
-      `(i.title LIKE ${p()} ESCAPE '\\' OR i.hook LIKE ${p()} ESCAPE '\\'` +
-        ` OR i.script_outline LIKE ${p()} ESCAPE '\\' OR i.niche LIKE ${p()} ESCAPE '\\')`,
+      `(i.title LIKE ${bind(like)} ESCAPE '\\'` +
+        ` OR i.hook LIKE ${bind(like)} ESCAPE '\\'` +
+        ` OR i.script_outline LIKE ${bind(like)} ESCAPE '\\'` +
+        ` OR i.niche LIKE ${bind(like)} ESCAPE '\\')`,
     );
-    binds.push(like, like, like, like);
   }
   if (filters.tag) {
     where.push(
       `EXISTS (SELECT 1 FROM idea_tags it JOIN tags t ON t.id = it.tag_id
-                WHERE it.idea_id = i.id AND t.user_id = ?1 AND t.name = ${p()})`,
+                WHERE it.idea_id = i.id AND t.user_id = ?1 AND t.name = ${bind(filters.tag)})`,
     );
-    binds.push(filters.tag);
   }
   if (filters.likedOnly) {
     where.push(`EXISTS (SELECT 1 FROM idea_likes l WHERE l.idea_id = i.id AND l.user_id = ?1)`);
   }
   if (cursor) {
-    where.push(`(i.updated_at < ${p()} OR (i.updated_at = ${p()} AND i.id < ${p()}))`);
-    binds.push(cursor.updated_at, cursor.updated_at, cursor.id);
+    where.push(
+      `(i.updated_at < ${bind(cursor.updated_at)}` +
+        ` OR (i.updated_at = ${bind(cursor.updated_at)} AND i.id < ${bind(cursor.id)}))`,
+    );
   }
 
   // Lấy dư 1 hàng để biết còn trang sau hay không.
