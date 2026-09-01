@@ -1,0 +1,69 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-videa",
+  "pages_build_output_dir": "./public",
+  "compatibility_date": "2026-08-01",
+  // Cố ý để rỗng. nodejs_compat KHÔNG cần thiết: crypto.subtle (PBKDF2, SHA-256),
+  // crypto.getRandomValues, crypto.randomUUID, TextEncoder, atob/btoa đều là Web API
+  // toàn cục trong workerd. Chỉ bật flag này nếu về sau có dependency đòi node:*.
+  "compatibility_flags": [],
+
+  // ---------------------------------------------------------------------------
+  // Cấp cao nhất: chỉ dùng cho `wrangler pages dev` (dev local).
+  // Pages KHÔNG kế thừa binding xuống env — mỗi env phải khai báo lại đầy đủ.
+  // ---------------------------------------------------------------------------
+  "d1_databases": [
+    { "binding": "DB", "database_name": "videa-db", "database_id": "PLACEHOLDER_DEV" }
+  ],
+  // Vectorize và Workers AI KHÔNG có giả lập local — không có cách nào chạy chúng
+  // trong workerd trên máy bạn. Có hai chế độ dev, chọn bằng .dev.vars:
+  //
+  //  (a) Offline (mặc định): EMBEDDINGS_MODE=stub. D1 chạy local, tìm kiếm ngữ
+  //      nghĩa lùi về tìm từ khoá, ý tưởng mới hiện "chưa index". Đủ để làm auth,
+  //      CRUD và frontend mà không tốn hạn mức Workers AI nào.
+  //
+  //  (b) Có Vectorize + AI thật: thêm `"remote": true` vào hai binding dưới đây
+  //      (index PHẢI tồn tại sẵn, xem README) và đặt EMBEDDINGS_MODE=live.
+  //      Binding AI luôn gọi ra dịch vụ thật và tính hạn mức thật, kể cả khi dev.
+  "vectorize": [
+    { "binding": "VEC", "index_name": "videa-ideas" }
+  ],
+  "ai": { "binding": "AI" },
+  "vars": {
+    "APP_ENV": "dev",
+    "COOKIE_NAME": "__Host-videa_sid",
+    // .dev.vars ghi đè giá trị này khi dev; đặt stub để chạy offline.
+    "EMBEDDINGS_MODE": "live"
+  },
+
+  "env": {
+    "preview": {
+      "compatibility_date": "2026-08-01",
+      "compatibility_flags": [],
+      "d1_databases": [
+        { "binding": "DB", "database_name": "videa-db-preview", "database_id": "PLACEHOLDER_PREVIEW" }
+      ],
+      "vectorize": [{ "binding": "VEC", "index_name": "videa-ideas-preview" }],
+      "ai": { "binding": "AI" },
+      "vars": {
+        "APP_ENV": "preview",
+        "COOKIE_NAME": "__Host-videa_sid",
+        "EMBEDDINGS_MODE": "live"
+      }
+    },
+    "production": {
+      "compatibility_date": "2026-08-01",
+      "compatibility_flags": [],
+      "d1_databases": [
+        { "binding": "DB", "database_name": "videa-db", "database_id": "PLACEHOLDER_PROD" }
+      ],
+      "vectorize": [{ "binding": "VEC", "index_name": "videa-ideas" }],
+      "ai": { "binding": "AI" },
+      "vars": {
+        "APP_ENV": "production",
+        "COOKIE_NAME": "__Host-videa_sid",
+        "EMBEDDINGS_MODE": "live"
+      }
+    }
+  }
+}

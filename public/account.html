@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tài khoản · cf-videa</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main>
+  <h1>Tài khoản</h1>
+  <p class="sub" id="whoami"></p>
+
+  <h2>Đổi mật khẩu</h2>
+  <div class="card">
+    <form id="pw" novalidate>
+      <label for="current_password">Mật khẩu hiện tại</label>
+      <input id="current_password" type="password" autocomplete="current-password" required>
+
+      <label for="new_password">Mật khẩu mới</label>
+      <input id="new_password" type="password" autocomplete="new-password"
+             minlength="10" maxlength="200" required>
+      <p class="small muted">
+        Tối thiểu 10 ký tự. Đổi mật khẩu sẽ đăng xuất mọi thiết bị khác.
+      </p>
+
+      <div class="actions">
+        <button class="primary" type="submit" id="pwsave">Đổi mật khẩu</button>
+      </div>
+    </form>
+    <p id="pwmsg" class="msg"></p>
+  </div>
+
+  <h2>Phiên đăng nhập</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Thiết bị</th><th>Hoạt động gần nhất</th><th></th></tr>
+      </thead>
+      <tbody id="sessions"><tr><td colspan="3" class="muted">Đang tải…</td></tr></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" id="revokeall">Đăng xuất mọi thiết bị khác</button>
+      <button type="button" id="logout" class="danger">Đăng xuất</button>
+    </div>
+    <p id="smsg" class="msg"></p>
+  </div>
+</main>
+<script type="module" src="/js/account.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+node_modules/
+.wrangler/
+dist/
+.dev.vars
+*.log
+.DS_Store
+src/env.d.ts
+
+# Không commit ảnh chụp màn hình test
+*.png

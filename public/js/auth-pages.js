@@ -1,0 +1,42 @@
+import { post } from './api.js';
+import { $, show } from './ui.js';
+
+// Một file phục vụ cả login.html lẫn register.html — hai form giống nhau tới mức
+// tách ra thành hai file chỉ tạo thêm chỗ để chúng lệch nhau.
+const isRegister = location.pathname.startsWith('/register');
+const form = $('#f');
+const msg = $('#msg');
+const submit = $('#submit');
+
+function nextUrl() {
+  const raw = new URLSearchParams(location.search).get('next');
+  // Chỉ nhận đường dẫn nội bộ: "//evil.example" và "https://evil.example" đều bị
+  // loại, nếu không thì ?next trở thành lỗ chuyển hướng mở.
+  if (raw && raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  return '/app';
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  show(msg, '');
+  submit.disabled = true;
+  submit.textContent = isRegister ? 'Đang tạo…' : 'Đang đăng nhập…';
+
+  const body = {
+    email: $('#email').value.trim(),
+    password: $('#password').value,
+  };
+  if (isRegister) {
+    const dn = $('#display_name').value.trim();
+    if (dn) body.display_name = dn;
+  }
+
+  try {
+    await post(isRegister ? '/api/auth/register' : '/api/auth/login', body);
+    location.replace(nextUrl());
+  } catch (err) {
+    show(msg, err.message || 'Không thực hiện được.');
+    submit.disabled = false;
+    submit.textContent = isRegister ? 'Đăng ký' : 'Đăng nhập';
+  }
+});

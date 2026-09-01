@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+#
+# Smoke test end-to-end. Chạy được cả với `wrangler pages dev` lẫn với bản đã deploy:
+#   bash scripts/smoke.sh
+#   BASE=https://cf-videa.pages.dev bash scripts/smoke.sh
+#
+# Vì sao không dùng cookie jar của curl: cookie phiên có tiền tố __Host- nên bắt
+# buộc mang cờ Secure, và curl từ chối gửi cookie Secure qua http:// (trình duyệt
+# thì có ngoại lệ cho localhost, curl thì không). Nên script tự bắt token từ header
+# Set-Cookie rồi gửi lại bằng -H "Cookie: ...". Cách này không phụ thuộc vào hành vi
+# cookie của client, và vì thế cũng chạy đúng như nhau ở local lẫn production.
+
+set -uo pipefail
+
+BASE="${BASE:-http://localhost:8788}"
+COOKIE_NAME="${COOKIE_NAME:-__Host-videa_sid}"
+PASS=0
+FAIL=0
+
+c_ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; PASS=$((PASS+1)); }
+c_bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; FAIL=$((FAIL+1)); }
+head_() { printf '\n\033[1m%s\033[0m\n' "$1"; }
+
+# expect <mô tả> <mong đợi> <thực tế>
+expect() {
+  if [ "$2" = "$3" ]; then c_ok "$1"; else c_bad "$1 (mong $2, nhận $3)"; fi
+}
+
+# Gửi request, trả về "<body>\n<http_code>". Token phiên truyền qua biến $TOKEN.
+req() {
+  local method="$1" path="$2" body="${3:-}" token="${4:-}"
+  local args=(-sS -m 30 -X "$method" "$BASE$path"
+              -H 'Content-Type: application/json'
+              -H "Origin: $BASE"
+              -H 'Sec-Fetch-Site: same-origin'
+              -w '\n%{http_code}')
+  [ -n "$token" ] && args+=(-H "Cookie: $COOKIE_NAME=$token")
+  [ -n "$body" ] && args+=(-d "$body")
+  curl "${args[@]}"
+}
+
+code() { printf '%s' "$1" | tail -n1; }
+body() { printf '%s' "$1" | sed '$d'; }
+
+# Bắt token từ header Set-Cookie của một lần đăng ký/đăng nhập.
+login_token() {
+  local payload="$1"
+  curl -sS -m 30 -D - -o /dev/null -X POST "$BASE/api/auth/login" \
+    -H 'Content-Type: application/json' -H "Origin: $BASE" \
+    -H 'Sec-Fetch-Site: same-origin' -d "$payload" \
+    | tr -d '\r' | awk -F'[=;]' -v n="$COOKIE_NAME" '/^[Ss]et-[Cc]ookie:/ && $0 ~ n {print $2; exit}'
+}
+
+register_token() {
+  local payload="$1"
+  curl -sS -m 30 -D - -o /dev/null -X POST "$BASE/api/auth/register" \
+    -H 'Content-Type: application/json' -H "Origin: $BASE" \
+    -H 'Sec-Fetch-Site: same-origin' -d "$payload" \
+    | tr -d '\r' | awk -F'[=;]' -v n="$COOKIE_NAME" '/^[Ss]et-[Cc]ookie:/ && $0 ~ n {print $2; exit}'
+}
+
+jqr() { printf '%s' "$1" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const o=JSON.parse(s);const p=process.argv[1].split(".");let v=o;for(const k of p)v=v?.[k];console.log(v===undefined?"":typeof v==="object"?JSON.stringify(v):v)}catch(e){console.log("")}})' "$2"; }
+
+SUFFIX="$RANDOM$RANDOM"
+EMAIL_A="smoke-a-$SUFFIX@example.com"
+EMAIL_B="smoke-b-$SUFFIX@example.com"
+PW="matkhau-rat-dai-$SUFFIX"
+
+head_ "1. Health"
+R=$(req GET /api/health)
+expect "GET /api/health trả 200" 200 "$(code "$R")"
+echo "     $(body "$R")"
+
+head_ "2. Đăng ký và phiên đăng nhập"
+TOKEN_A=$(register_token "{\"email\":\"$EMAIL_A\",\"password\":\"$PW\",\"display_name\":\"An\"}")
+if [ -n "$TOKEN_A" ]; then c_ok "đăng ký trả về cookie phiên"; else c_bad "đăng ký KHÔNG trả cookie phiên"; fi
+
+R=$(req GET /api/auth/me "" "$TOKEN_A")
+expect "GET /api/auth/me với cookie hợp lệ trả 200" 200 "$(code "$R")"
+expect "me trả đúng email" "$EMAIL_A" "$(jqr "$(body "$R")" user.email)"
+
+R=$(req GET /api/auth/me)
+expect "GET /api/auth/me không cookie trả 401" 401 "$(code "$R")"
+
+head_ "3. Chống dò tài khoản và CSRF"
+R=$(req POST /api/auth/login "{\"email\":\"khong-ton-tai-$SUFFIX@example.com\",\"password\":\"$PW\"}")
+MSG_UNKNOWN=$(jqr "$(body "$R")" error.message)
+R=$(req POST /api/auth/login "{\"email\":\"$EMAIL_A\",\"password\":\"sai-mat-khau-hoan-toan\"}")
+MSG_WRONGPW=$(jqr "$(body "$R")" error.message)
+expect "email lạ và sai mật khẩu cho THÔNG ĐIỆP GIỐNG HỆT" "$MSG_UNKNOWN" "$MSG_WRONGPW"
+
+R=$(curl -sS -m 30 -X POST "$BASE/api/ideas" -H 'Content-Type: application/json' \
+      -H "Cookie: $COOKIE_NAME=$TOKEN_A" -d '{"title":"x"}' -w '\n%{http_code}')
+expect "POST không có Origin bị chặn (CSRF)" 403 "$(code "$R")"
+
+R=$(curl -sS -m 30 -X POST "$BASE/api/ideas" -H 'Content-Type: application/json' \
+      -H "Origin: https://ke-tan-cong.example" -H 'Sec-Fetch-Site: cross-site' \
+      -H "Cookie: $COOKIE_NAME=$TOKEN_A" -d '{"title":"x"}' -w '\n%{http_code}')
+expect "POST từ origin lạ bị chặn (CSRF)" 403 "$(code "$R")"
+
+R=$(curl -sS -m 30 -X POST "$BASE/api/ideas" -H 'Content-Type: text/plain' \
+      -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+      -H "Cookie: $COOKIE_NAME=$TOKEN_A" -d '{"title":"x"}' -w '\n%{http_code}')
+expect "POST sai Content-Type bị từ chối" 400 "$(code "$R")"
+
+head_ "4. CRUD ý tưởng"
+IDEA='{"title":"5 mẹo quay video bằng điện thoại","hook":"Bạn đang cầm máy sai cách!","script_outline":"1. Khoá nét 2. Ánh sáng cửa sổ 3. Quay ngang","platform":"tiktok","niche":"làm phim","tags":["quay phim","mẹo"]}'
+R=$(req POST /api/ideas "$IDEA" "$TOKEN_A")
+expect "POST /api/ideas trả 201" 201 "$(code "$R")"
+IDEA_ID=$(jqr "$(body "$R")" idea.id)
+INDEXED=$(jqr "$(body "$R")" indexed)
+if [ -n "$IDEA_ID" ]; then c_ok "tạo được ý tưởng ($IDEA_ID)"; else c_bad "không lấy được id ý tưởng"; fi
+echo "     indexed=$INDEXED (false là bình thường khi chưa cấu hình Vectorize/Workers AI)"
+
+R=$(req GET "/api/ideas/$IDEA_ID" "" "$TOKEN_A")
+expect "GET ý tưởng của chính mình trả 200" 200 "$(code "$R")"
+expect "tag được lưu đúng" '["mẹo","quay phim"]' "$(jqr "$(body "$R")" idea.tags)"
+
+R=$(req PATCH "/api/ideas/$IDEA_ID" '{"status":"scripted"}' "$TOKEN_A")
+expect "PATCH đổi trạng thái trả 200" 200 "$(code "$R")"
+expect "trạng thái đã đổi" "scripted" "$(jqr "$(body "$R")" idea.status)"
+expect "PATCH không xoá mất tiêu đề cũ" "5 mẹo quay video bằng điện thoại" "$(jqr "$(body "$R")" idea.title)"
+
+R=$(req GET "/api/ideas?limit=10" "" "$TOKEN_A")
+expect "GET danh sách trả 200" 200 "$(code "$R")"
+
+R=$(req GET "/api/ideas?q=quay%20video" "" "$TOKEN_A")
+expect "tìm từ khoá (D1 LIKE) trả 200" 200 "$(code "$R")"
+
+R=$(req POST "/api/ideas/$IDEA_ID/like" "" "$TOKEN_A")
+expect "like trả 204" 204 "$(code "$R")"
+R=$(req POST "/api/ideas/$IDEA_ID/like" "" "$TOKEN_A")
+expect "like lần hai vẫn 204 (idempotent)" 204 "$(code "$R")"
+
+R=$(req GET /api/tags "" "$TOKEN_A")
+expect "GET /api/tags trả 200" 200 "$(code "$R")"
+
+head_ "5. Cách ly giữa các tài khoản"
+TOKEN_B=$(register_token "{\"email\":\"$EMAIL_B\",\"password\":\"$PW\"}")
+if [ -n "$TOKEN_B" ]; then c_ok "đăng ký được tài khoản thứ hai"; else c_bad "không đăng ký được tài khoản thứ hai"; fi
+
+for M in GET PATCH DELETE; do
+  BODY=""
+  [ "$M" = "PATCH" ] && BODY='{"title":"chiem doat"}'
+  R=$(req "$M" "/api/ideas/$IDEA_ID" "$BODY" "$TOKEN_B")
+  expect "$M ý tưởng của người khác trả 404 (không phải 403)" 404 "$(code "$R")"
+done
+R=$(req POST "/api/ideas/$IDEA_ID/like" "" "$TOKEN_B")
+expect "like ý tưởng của người khác trả 404" 404 "$(code "$R")"
+
+R=$(req GET "/api/ideas?limit=50" "" "$TOKEN_B")
+COUNT_B=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
+expect "danh sách của tài khoản B rỗng" 0 "$COUNT_B"
+
+head_ "6. Tìm kiếm ngữ nghĩa và gợi ý"
+R=$(req GET "/api/search?q=c%C3%A1ch%20c%E1%BA%A7m%20m%C3%A1y%20cho%20%C4%91%E1%BA%B9p" "" "$TOKEN_A")
+expect "GET /api/search trả 200" 200 "$(code "$R")"
+echo "     mode=$(jqr "$(body "$R")" mode) (fallback nghĩa là Vectorize/AI chưa sẵn sàng, đã lùi về tìm từ khoá)"
+
+R=$(req GET /api/recommendations "" "$TOKEN_A")
+expect "GET /api/recommendations trả 200" 200 "$(code "$R")"
+echo "     basis=$(jqr "$(body "$R")" basis)"
+
+R=$(req POST /api/reindex "" "$TOKEN_A")
+expect "POST /api/reindex trả 200" 200 "$(code "$R")"
+echo "     $(body "$R")"
+
+head_ "7. Đổi mật khẩu thu hồi phiên khác"
+TOKEN_A2=$(login_token "{\"email\":\"$EMAIL_A\",\"password\":\"$PW\"}")
+if [ -n "$TOKEN_A2" ]; then c_ok "đăng nhập lần hai tạo phiên thứ hai"; else c_bad "không đăng nhập lại được"; fi
+
+NEWPW="matkhau-moi-rat-dai-$SUFFIX"
+R=$(req POST /api/auth/change-password \
+      "{\"current_password\":\"$PW\",\"new_password\":\"$NEWPW\"}" "$TOKEN_A2")
+expect "đổi mật khẩu trả 200" 200 "$(code "$R")"
+
+R=$(req GET /api/auth/me "" "$TOKEN_A")
+expect "phiên CŨ bị thu hồi sau khi đổi mật khẩu" 401 "$(code "$R")"
+R=$(req GET /api/auth/me "" "$TOKEN_A2")
+expect "phiên hiện tại vẫn dùng được" 200 "$(code "$R")"
+
+R=$(req POST /api/auth/login "{\"email\":\"$EMAIL_A\",\"password\":\"$PW\"}")
+expect "mật khẩu cũ không đăng nhập được nữa" 400 "$(code "$R")"
+
+head_ "8. Đăng xuất"
+R=$(req POST /api/auth/logout "" "$TOKEN_A2")
+expect "đăng xuất trả 204" 204 "$(code "$R")"
+R=$(req GET /api/auth/me "" "$TOKEN_A2")
+expect "phiên đã thu hồi trả 401" 401 "$(code "$R")"
+
+head_ "Kết quả"
+printf '  %d đạt, %d hỏng\n\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ]

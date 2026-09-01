@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ý tưởng · cf-videa</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main>
+  <h1 id="heading">Ý tưởng mới</h1>
+  <p class="sub" id="sub">Ghi lại trước khi quên.</p>
+
+  <div class="card">
+    <form id="f" novalidate>
+      <label for="title">Tiêu đề</label>
+      <input id="title" maxlength="200" required>
+
+      <label for="hook">Hook <span class="muted small">(3 giây đầu giữ chân người xem)</span></label>
+      <input id="hook" maxlength="500">
+
+      <div class="row">
+        <div>
+          <label for="platform">Nền tảng</label>
+          <select id="platform">
+            <option value="tiktok">TikTok</option>
+            <option value="reels">Reels</option>
+            <option value="shorts">Shorts</option>
+            <option value="other">Khác</option>
+          </select>
+        </div>
+        <div>
+          <label for="status">Trạng thái</label>
+          <select id="status">
+            <option value="idea">Ý tưởng</option>
+            <option value="scripted">Đã viết kịch bản</option>
+            <option value="filmed">Đã quay</option>
+            <option value="published">Đã đăng</option>
+            <option value="archived">Lưu trữ</option>
+          </select>
+        </div>
+        <div>
+          <label for="niche">Niche</label>
+          <input id="niche" maxlength="100" placeholder="ẩm thực, làm phim…">
+        </div>
+      </div>
+
+      <label for="tags">Tag <span class="muted small">(ngăn cách bằng dấu phẩy)</span></label>
+      <input id="tags" placeholder="quay phim, mẹo">
+
+      <label for="script_outline">Dàn ý kịch bản</label>
+      <textarea id="script_outline" maxlength="8000"></textarea>
+
+      <div class="actions">
+        <button class="primary" type="submit" id="save">Lưu</button>
+        <button type="button" id="like" hidden></button>
+        <button type="button" id="del" class="danger" hidden>Xoá</button>
+        <a href="/app"><button type="button">Quay lại</button></a>
+      </div>
+    </form>
+    <p id="msg" class="msg"></p>
+  </div>
+
+  <section id="similar-wrap" hidden>
+    <h2>Ý tưởng tương tự</h2>
+    <div id="similar" class="list"></div>
+  </section>
+</main>
+<script type="module" src="/js/idea.js"></script>
+</body>
+</html>

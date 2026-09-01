@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kho ý tưởng · cf-videa</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main>
+  <h1>Kho ý tưởng</h1>
+  <p class="sub">Toàn bộ ý tưởng short video của bạn.</p>
+
+  <div class="card">
+    <form id="filters">
+      <div class="row">
+        <div>
+          <label for="q">Tìm theo từ khoá</label>
+          <input id="q" type="search" placeholder="tiêu đề, hook, kịch bản…">
+        </div>
+        <div>
+          <label for="status">Trạng thái</label>
+          <select id="status">
+            <option value="">Tất cả</option>
+            <option value="idea">Ý tưởng</option>
+            <option value="scripted">Đã viết kịch bản</option>
+            <option value="filmed">Đã quay</option>
+            <option value="published">Đã đăng</option>
+            <option value="archived">Lưu trữ</option>
+          </select>
+        </div>
+        <div>
+          <label for="platform">Nền tảng</label>
+          <select id="platform">
+            <option value="">Tất cả</option>
+            <option value="tiktok">TikTok</option>
+            <option value="reels">Reels</option>
+            <option value="shorts">Shorts</option>
+            <option value="other">Khác</option>
+          </select>
+        </div>
+        <div>
+          <label for="tag">Tag</label>
+          <select id="tag"><option value="">Tất cả</option></select>
+        </div>
+        <div class="shrink">
+          <label>&nbsp;</label>
+          <button type="submit">Lọc</button>
+        </div>
+      </div>
+      <p class="small muted spaced">
+        Ô này tìm theo từ khoá (khớp chữ). Muốn tìm theo ý nghĩa, dùng
+        <a href="/search">Tìm kiếm</a>.
+      </p>
+    </form>
+  </div>
+
+  <div class="actions">
+    <a href="/idea"><button class="primary" type="button">+ Ý tưởng mới</button></a>
+    <button type="button" id="reindex" hidden>Đồng bộ lại index</button>
+  </div>
+
+  <p id="msg" class="msg"></p>
+  <div id="list" class="list"><p class="empty">Đang tải…</p></div>
+  <div class="actions"><button id="more" type="button" hidden>Tải thêm</button></div>
+</main>
+<script type="module" src="/js/list.js"></script>
+</body>
+</html>

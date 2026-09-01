@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tìm kiếm · cf-videa</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main>
+  <h1>Tìm kiếm ngữ nghĩa</h1>
+  <p class="sub">Mô tả điều bạn đang nghĩ tới — không cần trùng từ khoá.</p>
+
+  <div class="card">
+    <form id="f">
+      <div class="row">
+        <div>
+          <label for="q">Bạn đang tìm gì?</label>
+          <input id="q" type="search" required
+                 placeholder="ví dụ: công thức ăn lành mạnh làm nhanh buổi sáng">
+        </div>
+        <div class="shrink">
+          <label>&nbsp;</label>
+          <button class="primary" type="submit" id="go">Tìm</button>
+        </div>
+      </div>
+    </form>
+    <p id="msg" class="msg"></p>
+  </div>
+
+  <div id="list" class="list"></div>
+</main>
+<script type="module" src="/js/search.js"></script>
+</body>
+</html>
