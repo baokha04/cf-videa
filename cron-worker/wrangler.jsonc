@@ -4,21 +4,26 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
 
-  // Đây là toàn bộ lý do Worker này tồn tại: Pages Functions KHÔNG có cron trigger.
-  // Worker này không chứa logic nghiệp vụ nào — nó chỉ là cái đồng hồ đánh thức
-  // endpoint /api/admin/cron của app Pages.
+  // Worker này tồn tại vì một lý do duy nhất: Pages Functions KHÔNG có cron trigger.
   "triggers": { "crons": ["*/15 * * * *"] },
 
-  // Worker này chỉ cần được đánh thức bởi cron. Không mở route công khai nào:
-  // handler fetch() bên trong chỉ để kích hoạt thủ công lúc gỡ lỗi, và dù nó đã
-  // đòi ADMIN_TOKEN thì một endpoint không cần thiết vẫn là bề mặt tấn công thừa.
-  // Muốn chạy tay thì gọi thẳng POST /api/admin/cron của app Pages.
+  // Không mở route công khai. Worker chỉ cần được cron đánh thức; một endpoint HTTP
+  // không dùng đến chỉ là bề mặt tấn công thừa.
   "workers_dev": false,
   "preview_urls": false,
 
+  // Dùng CHUNG D1 và Vectorize với app Pages, và gọi thẳng các hàm trong ../src.
+  // Không gọi HTTP sang app Pages: đỡ một chặng mạng, đỡ một secret dùng chung, và
+  // đỡ luôn cả một mắt xích có thể hỏng âm thầm.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "videa-db", "database_id": "77f7536b-884b-40d9-9866-0875cdcaa9ec" }
+  ],
+  "vectorize": [{ "binding": "VEC", "index_name": "videa-ideas" }],
+  "ai": { "binding": "AI" },
   "vars": {
-    // Đổi thành domain thật của bạn (hoặc <project>.pages.dev).
-    "PAGES_ORIGIN": "https://cf-videa.pages.dev"
+    "APP_ENV": "production",
+    "COOKIE_NAME": "__Host-videa_sid",
+    "EMBEDDINGS_MODE": "live"
   },
 
   "observability": { "enabled": true }

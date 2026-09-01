@@ -1,56 +1,36 @@
 /**
  * Đồng hồ cho cf-videa.
  *
- * Pages Functions không có cron trigger, nên các việc định kỳ (dọn phiên hết hạn,
- * dọn bảng rate limit, rút hàng đợi vector mồ côi, đối soát ý tưởng chưa index)
- * không có gì đánh thức chúng. Worker độc lập này giải đúng chỗ đó và không làm
- * gì khác: toàn bộ logic vẫn nằm trong app Pages, ở /api/admin/cron.
+ * Pages Functions không có cron trigger, nên các việc định kỳ — dọn phiên hết hạn,
+ * dọn bảng rate limit, rút hàng đợi vector mồ côi, đối soát ý tưởng chưa index —
+ * không có gì đánh thức chúng. Worker độc lập này giải đúng chỗ đó.
  *
- * Deploy riêng:
- *   cd cron-worker
- *   npx wrangler secret put ADMIN_TOKEN     # PHẢI trùng secret của dự án Pages
- *   npx wrangler deploy
+ * VÌ SAO GỌI THẲNG HÀM CHỨ KHÔNG GỌI HTTP SANG APP PAGES:
+ * Bản đầu tiên fetch() tới POST /api/admin/cron của app Pages. Nó im lặng không
+ * làm gì suốt nhiều chu kỳ: lịch cron có đăng ký, endpoint gọi tay thì chạy đúng,
+ * nhưng đường qua worker thì không — và không chẩn đoán được vì log không lấy được.
+ *
+ * Vấn đề là chính kiến trúc đó: một chặng mạng, một secret dùng chung, và một lớp
+ * xác thực nữa, tất cả chỉ để gọi đoạn code nằm ngay trong cùng repo. Vì `src/`
+ * cố ý không import gì từ Pages, Worker này import thẳng được các hàm đó và chạy
+ * trên binding của chính nó. Ít bộ phận hơn, không dùng chung secret, không có
+ * chặng mạng nào để hỏng — và vẫn là đúng một bản code, không nhân bản logic.
  */
-
-interface Env {
-  PAGES_ORIGIN: string;
-  ADMIN_TOKEN: string;
-}
+import type { Env } from '../../src/types';
+import { sweepExpiredSessions } from '../../src/auth/session';
+import { sweepRateLimits } from '../../src/auth/ratelimit';
+import { drainVectorGc, reconcile } from '../../src/vec/sync';
 
 export default {
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runCron(env));
-  },
-
-  // Cho phép kích hoạt thủ công khi cần kiểm tra, vẫn đòi đúng ADMIN_TOKEN.
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const auth = request.headers.get('Authorization') ?? '';
-    if (auth !== `Bearer ${env.ADMIN_TOKEN}`) {
-      return new Response('forbidden', { status: 403 });
-    }
-    const res = await runCron(env);
-    return new Response(res, { headers: { 'Content-Type': 'application/json' } });
+  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    // await thẳng, không dùng waitUntil: runtime chờ promise mà scheduled() trả về,
+    // nên đây là cách chắc chắn công việc chạy xong trước khi isolate bị thu hồi.
+    const sessions = await sweepExpiredSessions(env, 500);
+    const rate = await sweepRateLimits(env);
+    const gc = await drainVectorGc(env, 100);
+    const reindexed = await reconcile(env, 50);
+    console.log(
+      JSON.stringify({ sessions_gc: sessions, rate_gc: rate, vector_gc: gc, reindexed }),
+    );
   },
 } satisfies ExportedHandler<Env>;
-
-async function runCron(env: Env): Promise<string> {
-  const url = `${env.PAGES_ORIGIN}/api/admin/cron`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.ADMIN_TOKEN}`,
-      'Content-Type': 'application/json',
-      // Không có header này thì requireAdmin() từ chối, vì nó chỉ nhận yêu cầu
-      // quản trị đến từ ngoài trình duyệt.
-      'Sec-Fetch-Site': 'none',
-    },
-    body: '{}',
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    console.error('cron thất bại', res.status, text.slice(0, 500));
-  } else {
-    console.log('cron ok', text.slice(0, 500));
-  }
-  return text;
-}

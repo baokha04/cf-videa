@@ -60,8 +60,13 @@ export async function reindexAdmin(c: Ctx): Promise<Response> {
 }
 
 /**
- * Điểm vào cho công việc định kỳ. Pages Functions KHÔNG có cron trigger, nên
- * endpoint này được đánh thức bởi Worker riêng trong cron-worker/ (xem README).
+ * Chạy tay các việc định kỳ.
+ *
+ * Pages Functions KHÔNG có cron trigger. Việc định kỳ do Worker trong cron-worker/
+ * đảm nhiệm, và nó KHÔNG gọi endpoint này — nó import thẳng cùng những hàm bên dưới
+ * rồi chạy trên binding của chính nó, nên không có chặng mạng và không có secret
+ * dùng chung nào để hỏng. Endpoint này giữ lại để gọi tay khi cần kiểm tra hoặc
+ * khi muốn kích hoạt ngoài lịch.
  */
 export async function cron(c: Ctx): Promise<Response> {
   requireAdmin(c);

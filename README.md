@@ -186,9 +186,25 @@ Worker riêng, vì **Pages Functions không có cron trigger**:
 
 ```bash
 cd cron-worker
-# Sửa PAGES_ORIGIN trong wrangler.jsonc thành domain thật của bạn
-npx wrangler secret put ADMIN_TOKEN     # PHẢI trùng secret của dự án Pages
 npx wrangler deploy
+```
+
+Worker này **không** gọi HTTP sang app Pages — nó import thẳng các hàm trong `../src` và
+chạy trên binding D1/Vectorize của chính nó. Nên không cần secret dùng chung, không cần
+`PAGES_ORIGIN`, và không có chặng mạng nào để hỏng. Đó chính là lợi ích cụ thể của việc
+`src/` không import gì từ Pages: cùng một bản code chạy được ở cả hai nơi.
+
+Bản đầu tiên có gọi HTTP sang `/api/admin/cron`, và nó im lặng không làm gì suốt nhiều
+chu kỳ: lịch cron có đăng ký, endpoint gọi tay chạy đúng, nhưng đường qua worker thì
+không — và không chẩn đoán được vì log không lấy được ở môi trường có policy egress.
+Bỏ hẳn chặng đó đi thì vấn đề biến mất cùng với nguyên nhân.
+
+Endpoint `POST /api/admin/cron` vẫn giữ để chạy tay khi cần:
+
+```bash
+curl -X POST https://cf-videa.pages.dev/api/admin/cron \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Sec-Fetch-Site: none' -d '{}'
 ```
 
 ---
@@ -301,7 +317,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 |---|---|
 | Production | https://cf-videa.pages.dev — `env: production`, D1 `videa-db`, index `videa-ideas` |
 | Preview (nhánh này) | https://claude-account-management-sh.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
-| Cron | Worker `cf-videa-cron`, lịch `*/15 * * * *`, không mở route công khai |
+| Cron | Worker `cf-videa-cron`, lịch `*/15 * * * *`, không route công khai, dùng chung D1 + Vectorize với production |
 
 Cả hai D1 và cả hai Vectorize index đã được dọn sạch dữ liệu kiểm thử; index có đủ 4
 metadata index và chưa có vector nào, nên tài khoản đầu tiên bạn tạo sẽ được index đúng.
