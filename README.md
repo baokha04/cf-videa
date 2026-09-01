@@ -117,9 +117,14 @@ until [ "$(npx wrangler vectorize list-metadata-index videa-ideas \
 done
 ```
 
-Lưu ý thêm: `wrangler vectorize info` báo `vectorCount` **có độ trễ** — nó phản ánh trạng
-thái tại `processedUpToDatetime`, không phải hiện tại. Đừng dùng nó để khẳng định index
-rỗng hay đầy ngay sau khi ghi.
+Hai cái bẫy nữa của CLI, cả hai đều hỏng âm thầm:
+
+- `wrangler vectorize info` báo `vectorCount` **có độ trễ** — nó phản ánh trạng thái tại
+  `processedUpToDatetime`, không phải hiện tại. Đừng dùng nó để khẳng định index rỗng hay
+  đầy ngay sau khi ghi.
+- `wrangler vectorize delete-vectors --ids=a,b` **không phải** là xoá hai vector: cả chuỗi
+  bị hiểu là MỘT id và lệnh lỗi `id too long; max is 64 bytes`. Phải lặp lại cờ:
+  `--ids=a --ids=b`. Lỗi in ra stderr nên rất dễ trôi qua trong script.
 
 `visibility` được index dù v1 chưa dùng — lý do ở mục 2 phía trên.
 
@@ -198,6 +203,19 @@ Bản đầu tiên có gọi HTTP sang `/api/admin/cron`, và nó im lặng khô
 chu kỳ: lịch cron có đăng ký, endpoint gọi tay chạy đúng, nhưng đường qua worker thì
 không — và không chẩn đoán được vì log không lấy được ở môi trường có policy egress.
 Bỏ hẳn chặng đó đi thì vấn đề biến mất cùng với nguyên nhân.
+
+**Theo dõi cron còn sống hay không.** Cả cron worker lẫn endpoint chạy tay đều ghi một
+nhịp tim vào bảng `cron_runs` (đúng một hàng, ghi đè mỗi lần). `GET /api/health` trả ra:
+
+```json
+{ "cron_last_run_at": 1788280000000, "cron_last_source": "cron", "cron_stale": false }
+```
+
+`cron_stale` thành `true` khi quá 45 phút không có nhịp nào (lịch là 15 phút), và là
+chuỗi `"chưa từng chạy"` khi bảng còn rỗng. Có nó thì một cron chết là một trường JSON
+đọc được; không có nó thì phiên hết hạn chất đống và ý tưởng chưa index nằm im, không
+dấu hiệu gì — đúng tình huống đã xảy ra khi dựng hệ thống này, và log thì không lấy
+được vì `wrangler tail` bị policy egress chặn.
 
 Endpoint `POST /api/admin/cron` vẫn giữ để chạy tay khi cần:
 
@@ -290,7 +308,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 
 | Method | Path | Auth | Ghi chú |
 |---|---|:--:|---|
-| GET | `/api/health` | — | Kiểm tra D1 + sự hiện diện của binding; trả `dirty_ideas` |
+| GET | `/api/health` | — | Kiểm tra D1 + binding; trả `dirty_ideas`, `gc_pending`, `cron_last_run_at`, `cron_stale` |
 | POST | `/api/auth/register` | — | `{email, password, display_name?}` |
 | POST | `/api/auth/login` | — | `{email, password}` |
 | POST | `/api/auth/logout` | ✓ | |
