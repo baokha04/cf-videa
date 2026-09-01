@@ -11,30 +11,60 @@ trạng thái), tìm được **theo ý nghĩa** chứ không chỉ theo từ kh
 
 ---
 
-## Hai điều phải quyết trước khi chạy thật
+## Ba ràng buộc thật của nền tảng, đo trên deployment thật
 
-### 1. Cần gói Workers Paid
+### 1. Trần cứng 100.000 vòng của workerd, và hệ quả lên băm mật khẩu
 
-Băm mật khẩu dùng PBKDF2-HMAC-SHA256 210.000 vòng (khuyến nghị OWASP). Số đo thực tế
-(`node scripts/bench-pbkdf2.mjs`):
+workerd **chặn cứng số vòng PBKDF2 ở 100.000**. Vượt qua sẽ ném thẳng lỗi:
 
-| Số vòng | CPU mỗi lần băm |
-|---:|---:|
-| 50.000 | ~9 ms |
-| 100.000 | ~18 ms |
-| **210.000** | **~37 ms** ← mức đang dùng |
-| 600.000 | ~106 ms |
+```
+NotSupportedError: Pbkdf2 failed: iteration counts above 100000 are not supported
+```
 
-Workers/Pages tính **CPU time**. Mức này nằm gọn trong hạn mức 30 giây của gói Paid, nhưng
-vượt xa hạn mức 10 ms của gói Free — trên Free thì ngay cả 50.000 vòng cũng đã sát trần và
-đăng nhập sẽ bị ngắt giữa chừng.
+Đây **không** phải giới hạn theo gói cước — nâng lên Workers Paid cũng không gỡ được.
+Nên không thể tăng độ khó bằng cách tăng số vòng; cách duy nhất còn lại là chọn hàm băm
+đắt hơn cho mỗi vòng. Số đo thực tế (`node scripts/bench-pbkdf2.mjs`), mỗi lần băm:
 
-Không có cách nào làm một hàm băm mật khẩu đúng chuẩn mà rẻ; đó chính là mục đích của nó.
-Nếu buộc phải chạy Free, hạ `PBKDF2_ITERATIONS` trong `src/auth/password.ts` và ghi rõ đánh
-đổi — nhưng **đừng** thay bằng SHA-256 trần. Số vòng được nhúng vào từng chuỗi hash nên nâng
-lại sau này không cần migration: đăng nhập thành công với hash cũ sẽ tự băm lại.
+| Hàm băm | 50.000 | 100.000 | 210.000 | 600.000 |
+|---|---:|---:|---:|---:|
+| SHA-256 | 10 ms | 20 ms | 43 ms ✗ | 112 ms ✗ |
+| **SHA-512** | 31 ms | **66 ms** ← đang dùng | 130 ms ✗ | 368 ms ✗ |
 
-### 2. "Gợi ý" hiện chỉ khơi lại ý tưởng của chính bạn
+✗ = workerd từ chối chạy.
+
+Vì vậy cấu hình là **PBKDF2-HMAC-SHA512, 100.000 vòng** — đúng trần nền tảng, với hàm băm
+đắt nhất dùng được. Công bỏ ra tương đương khoảng 340.000 vòng SHA-256.
+
+**Nói thẳng về mức bảo vệ:** OWASP khuyến nghị 600.000 vòng cho PBKDF2-HMAC-SHA256 hoặc
+210.000 vòng cho PBKDF2-HMAC-SHA512. Trần của workerd khiến cấu hình này chỉ đạt khoảng
+một nửa mức khuyến nghị. Đó là mức tốt nhất PBKDF2 đạt được trên nền tảng này. Muốn vượt
+qua phải đổi sang Argon2id biên dịch ra WASM — đắt hơn nhiều về công sức và kích thước
+bundle, chỉ nên làm nếu mô hình đe doạ thực sự đòi hỏi. Bù lại đã có hai lớp khác: mật
+khẩu tối thiểu 10 ký tự và rate limit đăng nhập.
+
+Cả hàm băm lẫn số vòng đều nằm trong từng chuỗi hash (`pbkdf2$sha512$100000$...`), nên
+đổi tham số sau này không cần migration: hàng cũ vẫn đăng nhập được và lần đăng nhập
+thành công đó tự băm lại theo mức mới.
+
+**Về CPU:** ~66 ms mỗi lần đăng nhập. Nằm gọn trong hạn mức 30 giây của gói Workers Paid,
+nhưng vượt hạn mức 10 ms của gói Free — mà ngay cả SHA-256 ở 100.000 vòng (~20 ms) cũng
+đã vượt. Không có cách nào làm hàm băm mật khẩu đúng chuẩn mà rẻ; đó chính là mục đích.
+
+### 2. Vectorize mất khoảng một phút để index, không phải vài giây
+
+Upsert lên Vectorize là bất đồng bộ. Số đo thật trên deployment production:
+
+```
++26s  →  0/5 vector truy vấn được
++46s  →  0/5
++68s  →  5/5
+```
+
+Nghĩa là ý tưởng vừa tạo **không** tìm được bằng tìm kiếm ngữ nghĩa trong khoảng một phút
+đầu. Danh sách và tìm từ khoá (đọc thẳng D1) thì thấy ngay. Giao diện nói đúng con số này
+thay vì để người dùng tưởng tìm kiếm bị hỏng.
+
+### 3. "Gợi ý" hiện chỉ khơi lại ý tưởng của chính bạn
 
 Mọi ý tưởng đều riêng tư với tác giả, nên gợi ý cá nhân hoá chỉ có thể lôi lại ý tưởng
 **của chính bạn** mà bạn chưa thích — nó là "khơi lại ý tưởng cũ đã quên", không phải
@@ -124,10 +154,18 @@ npx wrangler types  # sinh lại src/env.d.ts sau MỖI lần đổi binding
 ## Deploy
 
 ```bash
-npx wrangler pages deploy
-BASE=https://cf-videa.pages.dev npm run smoke      # kiểm tra lại trên bản đã deploy
-npx wrangler pages deployment tail                 # log thật, xem CPU time thật
+npx wrangler pages deploy                     # nhánh hiện tại → preview
+npx wrangler pages deploy --branch=main       # → production (cf-videa.pages.dev)
+
+BASE=https://cf-videa.pages.dev npm run smoke                        # kiểm tra lại bản đã deploy
+npx wrangler pages deployment tail <deployment-id> --project-name cf-videa
 ```
+
+**Chẩn đoán lỗi 500 khi không dùng được `wrangler tail`.** Ở môi trường có policy egress
+chặn `tail.developers.workers.dev` (CI, sandbox), log không lấy được và một lỗi 500 câm là
+thứ không thể chẩn đoán. Vì vậy khi `APP_ENV` **khác** `production`, thân phản hồi lỗi có
+thêm trường `error.debug` chứa tên lỗi, thông điệp và 6 dòng đầu của stack. Trên production
+thì tuyệt đối không — chỉ ghi log. Chính cơ chế này đã tìm ra trần 100.000 vòng ở mục 1.
 
 Việc định kỳ (dọn phiên hết hạn, dọn rate limit, rút vector mồ côi, đối soát index) cần
 Worker riêng, vì **Pages Functions không có cron trigger**:

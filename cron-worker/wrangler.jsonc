@@ -9,6 +9,13 @@
   // endpoint /api/admin/cron của app Pages.
   "triggers": { "crons": ["*/15 * * * *"] },
 
+  // Worker này chỉ cần được đánh thức bởi cron. Không mở route công khai nào:
+  // handler fetch() bên trong chỉ để kích hoạt thủ công lúc gỡ lỗi, và dù nó đã
+  // đòi ADMIN_TOKEN thì một endpoint không cần thiết vẫn là bề mặt tấn công thừa.
+  // Muốn chạy tay thì gọi thẳng POST /api/admin/cron của app Pages.
+  "workers_dev": false,
+  "preview_urls": false,
+
   "vars": {
     // Đổi thành domain thật của bạn (hoặc <project>.pages.dev).
     "PAGES_ORIGIN": "https://cf-videa.pages.dev"
