@@ -4,14 +4,37 @@ import { sha256Hex } from '../util/hash';
 import { now } from '../util/id';
 
 const DAY = 86_400_000;
-/** Hết hạn do nhàn rỗi — được gia hạn trượt. */
-export const IDLE_TTL_MS = 14 * DAY;
-/** Trần cứng tính từ lúc tạo — không bao giờ gia hạn. */
-export const ABSOLUTE_TTL_MS = 90 * DAY;
-/** Còn dưới ngưỡng này thì gia hạn (để không phải UPDATE ở mọi request). */
-const RENEW_WHEN_REMAINING_MS = 7 * DAY;
+const HOUR = 3_600_000;
 
-export const COOKIE_MAX_AGE_SEC = Math.floor(IDLE_TTL_MS / 1000);
+/**
+ * Hai cấu hình phiên, chọn bằng ô "Ghi nhớ đăng nhập" lúc đăng nhập.
+ *
+ *  remember = true  → phiên 30 ngày, cookie CÓ Max-Age nên sống qua lần đóng trình
+ *                     duyệt. Dành cho máy riêng.
+ *  remember = false → phiên 12 giờ, cookie KHÔNG có Max-Age nên là cookie phiên và
+ *                     trình duyệt tự xoá khi đóng. Dành cho máy dùng chung.
+ *
+ * Cả hai đều có trần cứng 90 ngày tính từ lúc tạo, không bao giờ gia hạn.
+ */
+export const IDLE_TTL_REMEMBER_MS = 30 * DAY;
+export const IDLE_TTL_SESSION_MS = 12 * HOUR;
+export const ABSOLUTE_TTL_MS = 90 * DAY;
+
+/** Còn dưới tỉ lệ này của hạn nhàn rỗi thì gia hạn — để không phải UPDATE mỗi request. */
+const RENEW_WHEN_REMAINING_RATIO = 0.5;
+
+export function idleTtl(remember: boolean): number {
+  return remember ? IDLE_TTL_REMEMBER_MS : IDLE_TTL_SESSION_MS;
+}
+
+/**
+ * Max-Age cho cookie, tính bằng giây. Trả về undefined khi KHÔNG ghi nhớ: cookie
+ * thiếu Max-Age là cookie phiên, trình duyệt xoá lúc đóng — đó chính là hành vi mong
+ * muốn, không phải thiếu sót.
+ */
+export function cookieMaxAge(remember: boolean): number | undefined {
+  return remember ? Math.floor(IDLE_TTL_REMEMBER_MS / 1000) : undefined;
+}
 
 /**
  * Token là 32 byte ngẫu nhiên (256 bit). D1 chỉ lưu sha256(token): một bản dump
@@ -20,19 +43,22 @@ export const COOKIE_MAX_AGE_SEC = Math.floor(IDLE_TTL_MS / 1000);
 export async function createSession(
   env: Env,
   userId: string,
-  meta: { ip?: string | null; userAgent?: string | null },
+  meta: { ip?: string | null; userAgent?: string | null; remember?: boolean },
 ): Promise<{ token: string; session: SessionInfo }> {
   const token = bytesToB64url(randomBytes(32));
   const id = await sha256Hex(token);
   const t = now();
+  const remember = meta.remember ?? false;
   const session: SessionInfo = {
     id,
-    expires_at: t + IDLE_TTL_MS,
+    expires_at: t + idleTtl(remember),
     absolute_exp: t + ABSOLUTE_TTL_MS,
+    remember,
   };
   await env.DB.prepare(
-    `INSERT INTO sessions (id, user_id, created_at, expires_at, absolute_exp, last_seen_at, ip, user_agent)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?3, ?6, ?7)`,
+    `INSERT INTO sessions (id, user_id, created_at, expires_at, absolute_exp, last_seen_at,
+                           ip, user_agent, remember)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?3, ?6, ?7, ?8)`,
   )
     .bind(
       id,
@@ -42,6 +68,7 @@ export async function createSession(
       session.absolute_exp,
       meta.ip ?? null,
       (meta.userAgent ?? '').slice(0, 256) || null,
+      remember ? 1 : 0,
     )
     .run();
   return { token, session };
@@ -59,7 +86,7 @@ export async function resolveSession(env: Env, token: string): Promise<ResolvedS
   const id = await sha256Hex(token);
   const t = now();
   const row = await env.DB.prepare(
-    `SELECT s.id, s.expires_at, s.absolute_exp,
+    `SELECT s.id, s.expires_at, s.absolute_exp, s.remember,
             u.id AS user_id, u.email, u.display_name
        FROM sessions s
        JOIN users u ON u.id = s.user_id
@@ -70,22 +97,31 @@ export async function resolveSession(env: Env, token: string): Promise<ResolvedS
       id: string;
       expires_at: number;
       absolute_exp: number;
+      remember: number;
       user_id: string;
       email: string;
       display_name: string | null;
     }>();
   if (!row) return null;
+  const remember = row.remember === 1;
   return {
     user: { id: row.user_id, email: row.email, display_name: row.display_name },
-    session: { id: row.id, expires_at: row.expires_at, absolute_exp: row.absolute_exp },
-    shouldRenew: row.expires_at - t < RENEW_WHEN_REMAINING_MS,
+    session: {
+      id: row.id,
+      expires_at: row.expires_at,
+      absolute_exp: row.absolute_exp,
+      remember,
+    },
+    // Ngưỡng theo TỈ LỆ chứ không phải hằng số: phiên 12 giờ mà dùng ngưỡng 7 ngày
+    // thì lần request nào cũng gia hạn, tức là một lần ghi D1 thừa cho mỗi request.
+    shouldRenew: row.expires_at - t < idleTtl(remember) * RENEW_WHEN_REMAINING_RATIO,
   };
 }
 
 /** Đẩy hạn nhàn rỗi nhưng không bao giờ vượt quá trần cứng. */
 export async function renewSession(env: Env, s: SessionInfo): Promise<number> {
   const t = now();
-  const next = Math.min(t + IDLE_TTL_MS, s.absolute_exp);
+  const next = Math.min(t + idleTtl(s.remember), s.absolute_exp);
   await env.DB.prepare(`UPDATE sessions SET expires_at = ?2, last_seen_at = ?3 WHERE id = ?1`)
     .bind(s.id, next, t)
     .run();

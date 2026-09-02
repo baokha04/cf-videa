@@ -8,6 +8,9 @@ const listEl = $('#list');
 const msgEl = $('#msg');
 const moreBtn = $('#more');
 const reindexBtn = $('#reindex');
+const syncBox = $('#sync');
+const syncTitle = $('#sync-title');
+const syncNote = $('#sync-note');
 
 let cursor = null;
 let items = [];
@@ -32,12 +35,43 @@ async function load(append = false) {
     cursor = data.next_cursor;
     renderList(listEl, items, 'Chưa có ý tưởng nào khớp. Hãy tạo ý tưởng đầu tiên.');
     moreBtn.hidden = !cursor;
-    // Có bản ghi chưa index thì hiện nút đồng bộ — Pages không có cron nên đây là
-    // đường thủ công để người dùng tự chạy đối soát.
-    reindexBtn.hidden = !items.some((i) => !i.indexed);
   } catch (err) {
     show(msgEl, err.message);
   }
+}
+
+/**
+ * Trạng thái đồng bộ hỏi thẳng server, KHÔNG đếm trên danh sách đang hiển thị:
+ * danh sách bị phân trang và lọc, nên đếm trên đó sẽ bỏ sót những ý tưởng chưa
+ * index nằm ngoài trang hiện tại — và người dùng sẽ tưởng đã đồng bộ xong.
+ */
+async function refreshSyncState() {
+  let dirty = null;
+  try {
+    const r = await get('/api/sync');
+    dirty = typeof r.dirty === 'number' ? r.dirty : null;
+  } catch {
+    dirty = null;
+  }
+
+  if (dirty === null) {
+    syncBox.classList.remove('pending');
+    syncTitle.textContent = 'Không kiểm tra được trạng thái index';
+    syncNote.textContent = 'Vẫn bấm đồng bộ được.';
+    reindexBtn.disabled = false;
+    return dirty;
+  }
+
+  const pending = dirty > 0;
+  syncBox.classList.toggle('pending', pending);
+  syncTitle.textContent = pending
+    ? `${dirty} ý tưởng chưa được index`
+    : 'Mọi ý tưởng đã được index';
+  syncNote.textContent = pending
+    ? 'Chưa tìm được bằng tìm kiếm ngữ nghĩa cho tới khi bạn đồng bộ.'
+    : 'Tìm kiếm ngữ nghĩa đang bám sát dữ liệu.';
+  reindexBtn.disabled = !pending;
+  return dirty;
 }
 
 async function loadTags() {
@@ -65,30 +99,47 @@ moreBtn.addEventListener('click', () => load(true));
 
 reindexBtn.addEventListener('click', async () => {
   reindexBtn.disabled = true;
-  reindexBtn.textContent = 'Đang đồng bộ…';
+  show(msgEl, '');
+  let done = 0;
+  let failed = 0;
   try {
-    // Endpoint xử lý theo lô, gọi lặp cho tới khi hết hàng bẩn.
+    // Endpoint xử lý theo lô 50 hàng, nên gọi lặp cho tới khi hết. Giới hạn số vòng
+    // để một lỗi lặp lại không biến thành vòng lặp vô hạn trên trình duyệt.
     let remaining = Infinity;
-    let rounds = 0;
-    while (remaining > 0 && rounds < 20) {
+    for (let round = 0; round < 40 && remaining > 0; round++) {
       const r = await post('/api/reindex');
+      done += r.processed;
+      failed += r.failed;
       remaining = r.remaining;
-      rounds++;
-      if (r.processed === 0 && r.failed > 0) break;
+      reindexBtn.textContent = `Đang đồng bộ… (${done})`;
+      // Không tiến thêm được nữa thì dừng, đừng quay vòng vô ích.
+      if (r.processed === 0) break;
     }
-    show(
-      msgEl,
-      remaining > 0
-        ? `Còn ${remaining} ý tưởng chưa index được. Kiểm tra cấu hình Vectorize và Workers AI.`
-        : 'Đã đồng bộ xong.',
-      remaining > 0 ? 'note' : 'ok',
-    );
+
+    if (remaining > 0) {
+      show(
+        msgEl,
+        `Đã đồng bộ ${done} ý tưởng, còn ${remaining} chưa xong` +
+          (failed > 0 ? ` (${failed} lỗi)` : '') +
+          '. Thử lại sau ít phút.',
+        'note',
+      );
+    } else {
+      // Vector vừa ghi phải mất khoảng một phút mới truy vấn được — nói rõ để người
+      // dùng không tưởng tìm kiếm bị hỏng khi thử ngay lập tức.
+      show(
+        msgEl,
+        `Đã đồng bộ ${done} ý tưởng. Tìm kiếm ngữ nghĩa sẽ thấy chúng sau khoảng một phút.`,
+        'ok',
+      );
+    }
+    await refreshSyncState();
     await load(false);
   } catch (err) {
     show(msgEl, err.message);
+    await refreshSyncState();
   } finally {
-    reindexBtn.disabled = false;
-    reindexBtn.textContent = 'Đồng bộ lại index';
+    reindexBtn.textContent = 'Đồng bộ index';
   }
 });
 
@@ -101,3 +152,4 @@ for (const id of ['q', 'status', 'platform', 'tag']) {
 
 await loadTags();
 await load(false);
+await refreshSyncState();

@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   ABSOLUTE_TTL_MS,
+  IDLE_TTL_REMEMBER_MS,
+  IDLE_TTL_SESSION_MS,
+  cookieMaxAge,
   createSession,
   resolveSession,
   revokeAllSessions,
+  renewSession,
   revokeSession,
   sweepExpiredSessions,
   recordMaintenanceRun,
@@ -124,6 +128,51 @@ describe('phiên đăng nhập', () => {
       .run();
     expect(await sweepExpiredSessions(testEnv())).toBe(1);
     expect(await resolveSession(testEnv(), alive.token)).not.toBeNull();
+  });
+
+  it('ghi nhớ đăng nhập cho phiên dài và cookie sống qua lần đóng trình duyệt', async () => {
+    const u = await makeUser();
+    const t0 = Date.now();
+    const { token } = await createSession(testEnv(), u.id, { remember: true });
+    const r = await resolveSession(testEnv(), token);
+    expect(r?.session.remember).toBe(true);
+    expect(r!.session.expires_at - t0).toBeGreaterThan(IDLE_TTL_REMEMBER_MS - 5000);
+    // Có Max-Age → trình duyệt giữ cookie sau khi đóng.
+    expect(cookieMaxAge(true)).toBe(Math.floor(IDLE_TTL_REMEMBER_MS / 1000));
+  });
+
+  it('KHÔNG ghi nhớ thì phiên ngắn và cookie là cookie phiên', async () => {
+    const u = await makeUser();
+    const t0 = Date.now();
+    const { token } = await createSession(testEnv(), u.id, { remember: false });
+    const r = await resolveSession(testEnv(), token);
+    expect(r?.session.remember).toBe(false);
+    expect(r!.session.expires_at - t0).toBeLessThanOrEqual(IDLE_TTL_SESSION_MS);
+    // undefined = KHÔNG đặt Max-Age = cookie phiên. Đây là điểm mấu chốt của tính
+    // năng: máy dùng chung thì đóng trình duyệt là mất đăng nhập.
+    expect(cookieMaxAge(false)).toBeUndefined();
+  });
+
+  it('mặc định là KHÔNG ghi nhớ khi không nói gì', async () => {
+    // Fail-safe: quên truyền cờ thì phải ra phiên ngắn, không phải phiên 30 ngày.
+    const u = await makeUser();
+    const { token } = await createSession(testEnv(), u.id, {});
+    expect((await resolveSession(testEnv(), token))?.session.remember).toBe(false);
+  });
+
+  it('gia hạn trượt giữ nguyên kiểu phiên, không âm thầm kéo dài phiên ngắn', async () => {
+    const u = await makeUser();
+    const { token, session } = await createSession(testEnv(), u.id, { remember: false });
+    // Đẩy sát hạn để kích hoạt gia hạn.
+    await testEnv()
+      .DB.prepare('UPDATE sessions SET expires_at = ?2 WHERE id = ?1')
+      .bind(session.id, Date.now() + 60_000)
+      .run();
+    const r = await resolveSession(testEnv(), token);
+    expect(r?.shouldRenew).toBe(true);
+    const next = await renewSession(testEnv(), r!.session);
+    // Gia hạn theo TTL ngắn, không nhảy lên 30 ngày.
+    expect(next - Date.now()).toBeLessThanOrEqual(IDLE_TTL_SESSION_MS + 1000);
   });
 
   it('xoá user thì phiên bị xoá theo (khoá ngoại CASCADE)', async () => {

@@ -58,9 +58,9 @@ Upsert lên Vectorize là bất đồng bộ. Số đo thật trên deployment p
 +68s  →  5/5
 ```
 
-Nghĩa là ý tưởng vừa tạo **không** tìm được bằng tìm kiếm ngữ nghĩa trong khoảng một phút
-đầu. Danh sách và tìm từ khoá (đọc thẳng D1) thì thấy ngay. Giao diện nói đúng con số này
-thay vì để người dùng tưởng tìm kiếm bị hỏng.
+Nghĩa là sau khi bấm "Đồng bộ index", vẫn phải chờ thêm khoảng một phút nữa thì ý tưởng
+mới tìm được bằng tìm kiếm ngữ nghĩa. Danh sách và tìm từ khoá (đọc thẳng D1) thì thấy
+ngay. Giao diện nói đúng con số này thay vì để người dùng tưởng tìm kiếm bị hỏng.
 
 ### 3. "Gợi ý" hiện chỉ khơi lại ý tưởng của chính bạn
 
@@ -184,6 +184,34 @@ thứ không thể chẩn đoán. Vì vậy khi `APP_ENV` **khác** `production`
 thêm trường `error.debug` chứa tên lỗi, thông điệp và 6 dòng đầu của stack. Trên production
 thì tuyệt đối không — chỉ ghi log. Chính cơ chế này đã tìm ra trần 100.000 vòng ở mục 1.
 
+### Index vector là thao tác THỦ CÔNG, và đó là chủ ý
+
+Tạo và sửa ý tưởng **chỉ ghi D1**. Không nhúng, không gọi Workers AI, không đụng
+Vectorize. Việc index dồn lại cho tới khi người dùng bấm **"Đồng bộ index"** ở trang
+kho ý tưởng.
+
+Lý do: một lần nhúng tốn một lời gọi Workers AI và vài trăm mili giây cho mỗi lần
+lưu, trong khi người ta thường sửa đi sửa lại vài lần trước khi ưng — mỗi lần như vậy
+đều đốt một lời gọi cho bản nháp sẽ bị ghi đè ngay sau đó. Gom lại một lần rẻ hơn hẳn
+và làm thao tác lưu nhanh hơn nhiều.
+
+**Hai loại "chưa đồng bộ", và loại thứ hai không tốn lời gọi AI nào:**
+
+| Thay đổi | Cột lệch | Việc đồng bộ phải làm |
+|---|---|---|
+| Sửa tiêu đề, hook, kịch bản, niche, tag, nền tảng | `embedded_hash` ≠ `content_hash` | nhúng lại rồi upsert |
+| Chỉ đổi **trạng thái** | `indexed_meta_hash` ≠ chữ ký hiện tại | lấy lại vector cũ, ghi đè metadata |
+
+Loại thứ hai là cái bẫy: `status` nằm trong metadata của vector nhưng KHÔNG nằm trong
+văn bản đem đi nhúng, nên đổi trạng thái không làm `content_hash` đổi. Nếu chỉ dựa vào
+`content_hash` để biết hàng nào cần đồng bộ thì metadata trên Vectorize sẽ mốc lại
+vĩnh viễn và `/api/search?status=…` lọc sai mà không có dấu hiệu gì. Cột
+`indexed_meta_hash` (migrations/0004) tồn tại chỉ để bịt chỗ đó.
+
+Thanh đồng bộ trên trang kho ý tưởng **luôn hiển thị**, kể cả khi đã sạch, và lấy số
+đếm từ `GET /api/sync` chứ không đếm trên danh sách đang hiện — danh sách bị phân
+trang và lọc, đếm trên đó sẽ bỏ sót ý tưởng nằm ngoài trang hiện tại.
+
 ### Bảo trì định kỳ — không có cron, và đó là chủ ý
 
 Pages Functions không có cron trigger. Dự án **cố ý không** dựng Worker riêng chỉ để có
@@ -271,8 +299,13 @@ Pages mang lại. Dùng bộ đếm cửa sổ cố định, nguyên tử trong 
 - **Cookie `__Host-`**: trình duyệt từ chối nếu thiếu `Secure`, thiếu `Path=/`, hoặc có
   `Domain` → chặn cố định cookie từ subdomain. Hoạt động cả trên `http://localhost` vì
   localhost là secure context, nên **không bỏ `Secure` khi dev**.
-- **Hai mốc hết hạn**: nhàn rỗi 14 ngày (gia hạn trượt) và trần cứng 90 ngày (không bao giờ
-  gia hạn).
+- **Ghi nhớ đăng nhập** đổi cả hai đầu, không chỉ giao diện: có tích thì phiên 30 ngày và
+  cookie mang `Max-Age` nên sống qua lần đóng trình duyệt; không tích thì phiên 12 giờ và
+  cookie **không** có `Max-Age`, tức là cookie phiên và trình duyệt tự xoá khi đóng. Cờ
+  này lưu trên hàng phiên vì lúc gia hạn trượt phải biết phát lại cookie kiểu nào.
+  Mặc định khi không nói gì là **không** ghi nhớ (fail-safe); riêng lúc đăng ký thì mặc
+  định có, vì người vừa tự tạo tài khoản gần như luôn ở máy riêng.
+- **Trần cứng 90 ngày** tính từ lúc tạo phiên, không bao giờ gia hạn, áp cho cả hai kiểu.
 - **CSRF**: kiểm tra `Origin`/`Sec-Fetch-Site` trên mọi request thay đổi dữ liệu, cộng với
   bắt buộc `Content-Type: application/json`. Không dùng token vì không cần. Quy tắc đi kèm,
   **không được vi phạm**: không endpoint `GET` nào được thay đổi dữ liệu — `SameSite=Lax`
@@ -303,16 +336,49 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | DELETE | `/api/auth/sessions/:id` | ✓ | |
 | POST | `/api/auth/revoke-all` | ✓ | Giữ lại phiên hiện tại |
 | GET | `/api/ideas` | ✓ | Lọc + tìm từ khoá, phân trang keyset |
-| POST | `/api/ideas` | ✓ | Trả `{idea, indexed}` |
+| POST | `/api/ideas` | ✓ | **Chỉ ghi D1**, không nhúng, không đụng Vectorize |
 | GET · PATCH · DELETE | `/api/ideas/:id` | ✓ | 404 khi không phải của bạn |
 | POST · DELETE | `/api/ideas/:id/like` | ✓ | Idempotent |
 | GET | `/api/ideas/:id/similar` | ✓ | Dùng lại vector đã lưu |
 | GET | `/api/search` | ✓ | Ngữ nghĩa; lùi về từ khoá khi AI/Vectorize hỏng |
 | GET | `/api/recommendations` | ✓ | `basis: likes \| cold_start` |
 | GET | `/api/tags` | ✓ | |
-| POST | `/api/reindex` | ✓ | Đối soát cho chính mình, theo lô |
+| GET | `/api/sync` | ✓ | Đếm ý tưởng của chính mình chưa được index |
+| POST | `/api/reindex` | ✓ | Đồng bộ cho chính mình, theo lô 50 |
 | POST | `/api/admin/reindex` | `ADMIN_TOKEN` | `{scope: dirty\|all\|user}` — cũng là công cụ đổi model |
 | POST | `/api/admin/maintenance` | `ADMIN_TOKEN` | Quét toàn bộ một lần: dọn phiên, rate limit, vector mồ côi, đối soát index |
+
+## Giao diện
+
+**HTML tĩnh + ES module thuần, không có bước build** — xem phần Frontend ở trên.
+
+**Chuyển sáng/tối.** Nút trên thanh điều hướng (và trên trang đăng nhập/đăng ký) chạy
+vòng: theo hệ thống → sáng → tối. Giữ lại lựa chọn "theo hệ thống" chứ không chỉ hai
+trạng thái, vì đó là hành vi mặc định trước đây.
+
+Lựa chọn lưu ở `localStorage` và được áp bởi `public/js/theme-init.js` — một script
+**cổ điển, nạp đồng bộ trong `<head>`**, không phải module và không `defer`. Lý do: nó
+phải chạy xong trước khung hình đầu tiên, nếu không người chọn nền tối sẽ thấy một
+nháy trắng mỗi lần mở trang. Không nhét inline được vì CSP đặt `script-src 'self'`
+không có `unsafe-inline`, nên một file riêng là cách giữ CSP nghiêm ngặt mà vẫn kịp.
+
+CSS khai báo bảng màu sáng đầy đủ trên `:root`, rồi ghi đè hai lần: dưới
+`@media (prefers-color-scheme: dark)` có chốt `:root:not([data-theme="light"])`, và
+dưới `:root[data-theme="dark"]`. Không màu nào chỉ tồn tại bên trong media query —
+nếu thế thì ép sáng trên máy đang để chế độ tối sẽ ra biến rỗng.
+
+**iPhone 16 Pro (402×874, DPR 3).** Đã kiểm chứng bằng Chromium ở đúng khung đó:
+
+- `viewport-fit=cover` + `env(safe-area-inset-*)` để nội dung không chui xuống dưới
+  Dynamic Island hay bị thanh home che.
+- **Ô nhập cố định 16px.** Dưới ngưỡng này iOS Safari **tự phóng to trang** khi chạm
+  vào ô nhập và người dùng phải tự thu lại. Đây là lý do duy nhất cỡ chữ đó bị ghim.
+- Mọi nút, liên kết điều hướng và ô đánh dấu cao tối thiểu 44px.
+- `100dvh` thay cho `100vh`: trên iOS Safari `100vh` tính cả phần bị thanh địa chỉ che
+  nên đáy trang bị cắt.
+- Bảng phiên đăng nhập xếp lại thành danh sách dọc dưới 560px — bảng ba cột trên màn
+  402px chỉ còn cách cuộn ngang hoặc bóp chữ, cả hai đều tệ hơn.
+- Thanh điều hướng dính trên đỉnh, cuộn ngang được, và giấu email khi màn hẹp.
 
 ## Trạng thái đang chạy
 

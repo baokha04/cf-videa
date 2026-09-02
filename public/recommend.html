@@ -2,9 +2,15 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover: cho phép nội dung tràn ra sát mép màn hình iPhone; CSS
+     dùng env(safe-area-inset-*) để tránh Dynamic Island và thanh home. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Gợi ý · cf-videa</title>
 <link rel="stylesheet" href="/css/app.css">
+<!-- Đồng bộ, KHÔNG defer: phải áp giao diện trước khung hình đầu tiên để không nháy. -->
+<script src="/js/theme-init.js"></script>
 </head>
 <body>
 <main>

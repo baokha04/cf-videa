@@ -108,9 +108,13 @@ IDEA='{"title":"5 mẹo quay video bằng điện thoại","hook":"Bạn đang c
 R=$(req POST /api/ideas "$IDEA" "$TOKEN_A")
 expect "POST /api/ideas trả 201" 201 "$(code "$R")"
 IDEA_ID=$(jqr "$(body "$R")" idea.id)
-INDEXED=$(jqr "$(body "$R")" indexed)
 if [ -n "$IDEA_ID" ]; then c_ok "tạo được ý tưởng ($IDEA_ID)"; else c_bad "không lấy được id ý tưởng"; fi
-echo "     indexed=$INDEXED (false là bình thường khi chưa cấu hình Vectorize/Workers AI)"
+# Tạo ý tưởng CHỈ ghi D1 — không nhúng, không đụng Vectorize. indexed phải là false.
+expect "tạo ý tưởng KHÔNG tự index (chỉ ghi D1)" "false" "$(jqr "$(body "$R")" indexed)"
+
+R=$(req GET /api/sync "" "$TOKEN_A")
+expect "GET /api/sync trả 200" 200 "$(code "$R")"
+expect "ý tưởng vừa tạo được đếm là chưa index" 1 "$(jqr "$(body "$R")" dirty)"
 
 R=$(req GET "/api/ideas/$IDEA_ID" "" "$TOKEN_A")
 expect "GET ý tưởng của chính mình trả 200" 200 "$(code "$R")"
@@ -164,6 +168,23 @@ echo "     basis=$(jqr "$(body "$R")" basis)"
 R=$(req POST /api/reindex "" "$TOKEN_A")
 expect "POST /api/reindex trả 200" 200 "$(code "$R")"
 echo "     $(body "$R")"
+
+head_ "6b. Ghi nhớ đăng nhập"
+# Cookie có Max-Age = sống qua lần đóng trình duyệt. Không có = cookie phiên.
+CK_REMEMBER=$(curl -sS -m 30 -D - -o /dev/null -X POST "$BASE/api/auth/login" \
+  -H 'Content-Type: application/json' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+  -d "{\"email\":\"$EMAIL_A\",\"password\":\"$PW\",\"remember\":true}" \
+  | tr -d '\r' | grep -i '^set-cookie' | head -1)
+CK_SESSION=$(curl -sS -m 30 -D - -o /dev/null -X POST "$BASE/api/auth/login" \
+  -H 'Content-Type: application/json' -H "Origin: $BASE" -H 'Sec-Fetch-Site: same-origin' \
+  -d "{\"email\":\"$EMAIL_A\",\"password\":\"$PW\",\"remember\":false}" \
+  | tr -d '\r' | grep -i '^set-cookie' | head -1)
+if printf '%s' "$CK_REMEMBER" | grep -qi 'max-age'; then
+  c_ok "remember=true → cookie có Max-Age (sống qua lần đóng trình duyệt)"
+else c_bad "remember=true nhưng cookie KHÔNG có Max-Age"; fi
+if printf '%s' "$CK_SESSION" | grep -qi 'max-age'; then
+  c_bad "remember=false nhưng cookie VẪN có Max-Age"
+else c_ok "remember=false → cookie phiên (đóng trình duyệt là mất)"; fi
 
 head_ "7. Đổi mật khẩu thu hồi phiên khác"
 TOKEN_A2=$(login_token "{\"email\":\"$EMAIL_A\",\"password\":\"$PW\"}")

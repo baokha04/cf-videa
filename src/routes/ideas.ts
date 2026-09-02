@@ -5,8 +5,7 @@ import * as ideasDb from '../db/ideas';
 import * as likesDb from '../db/likes';
 import { setIdeaTags, tagsForIdeas } from '../db/tags';
 import { buildEmbedText, contentHash } from '../vec/embeddings';
-import { deleteIdeaVectors, queueGc } from '../vec/index';
-import { indexIdea, refreshVectorMetadata } from '../vec/sync';
+import { deleteIdeaVectors, metaSignature, queueGc } from '../vec/index';
 import { invalidateTasteVector } from '../vec/profile';
 import {
   IDEA_STATUSES,
@@ -61,7 +60,10 @@ function toDto(row: IdeaRow, tags: string[], liked: boolean, score?: number): Id
     visibility: row.visibility,
     tags,
     liked,
-    indexed: row.embedded_hash === row.content_hash,
+    // "Đã index" nghĩa là vector trên Vectorize khớp CẢ nội dung LẪN metadata.
+    indexed:
+      row.embedded_hash === row.content_hash &&
+      row.indexed_meta_hash === metaSignature(row),
     created_at: row.created_at,
     updated_at: row.updated_at,
     ...(score !== undefined ? { score } : {}),
@@ -107,6 +109,17 @@ export async function listIdeas(c: Ctx): Promise<Response> {
   return c.json({ items: await hydrate(c, user.id, rows), next_cursor: nextCursor });
 }
 
+/**
+ * Tạo ý tưởng — CHỈ ghi D1.
+ *
+ * Cố ý không nhúng và không đụng Vectorize ở đây. Lý do: nhúng tốn một lời gọi
+ * Workers AI và vài trăm mili giây cho mỗi lần lưu, trong khi người dùng thường sửa
+ * đi sửa lại vài lần trước khi ưng — mỗi lần như vậy đều đốt một lời gọi cho một bản
+ * nháp sẽ bị ghi đè ngay sau đó. Nên việc index dồn lại và do người dùng bấm nút
+ * "Đồng bộ index" khi họ thấy đã xong.
+ *
+ * Hàng vừa tạo tự động là "bẩn" (embedded_hash NULL), nên nút đồng bộ sẽ thấy nó.
+ */
 export async function createIdea(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const body = await readJson(c);
@@ -117,11 +130,7 @@ export async function createIdea(c: Ctx): Promise<Response> {
   const row = await ideasDb.create(c.env, user.id, input, hash);
   if (tags.length) await setIdeaTags(c.env, user.id, row.id, tags);
 
-  const indexed = await indexIdea(c.env, row, tags);
-  return c.json(
-    { idea: toDto({ ...row, embedded_hash: indexed ? hash : null }, tags, false), indexed },
-    201,
-  );
+  return c.json({ idea: toDto(row, tags, false), indexed: false }, 201);
 }
 
 export async function getIdea(c: Ctx): Promise<Response> {
@@ -155,31 +164,15 @@ export async function updateIdea(c: Ctx): Promise<Response> {
   const fresh = await ideasDb.getById(c.env, user.id, id);
   if (!fresh) throw notFound('Không tìm thấy ý tưởng.');
 
-  // Ba trường hợp, và trường hợp giữa là chỗ dễ bỏ sót nhất:
+  // Như createIdea: chỉ ghi D1, không đụng Vectorize.
   //
-  //  1. Nội dung đổi  → embed lại (upsert kèm metadata mới luôn).
-  //  2. Chỉ metadata đổi (đổi mỗi status) → content_hash KHÔNG đổi, nên nếu chỉ
-  //     nhìn hash thì sẽ bỏ qua và metadata trên Vectorize mốc lại ở giá trị cũ,
-  //     khiến /api/search?status=… lọc sai và gợi ý kéo về ý tưởng đã publish.
-  //     Dùng lại vector đã lưu, chỉ ghi đè metadata — không tốn lời gọi AI nào.
-  //  3. Không đổi gì ảnh hưởng index → không làm gì.
-  const needsEmbed = fresh.embedded_hash !== hash;
-  const metadataChanged =
-    existing.status !== fresh.status || existing.visibility !== fresh.visibility;
-
-  let indexed: boolean;
-  if (needsEmbed) {
-    indexed = await indexIdea(c.env, fresh, tags);
-  } else if (metadataChanged) {
-    // Chưa có vector để cập nhật thì lùi về đường đầy đủ.
-    indexed =
-      (await refreshVectorMetadata(c.env, fresh)) || (await indexIdea(c.env, fresh, tags));
-  } else {
-    indexed = true;
-  }
-
+  // Đổi mỗi trạng thái cũng phải được nút đồng bộ nhìn thấy, dù content_hash không
+  // đổi — nếu không, metadata trên Vectorize mốc lại và /api/search?status=… lọc sai.
+  // Cột indexed_meta_hash lo việc đó (xem migrations/0004), nên ở đây không cần
+  // phân biệt loại thay đổi nào cả.
   const [dto] = await hydrate(c, user.id, [fresh]);
-  return c.json({ idea: dto, indexed });
+  if (!dto) throw notFound('Không tìm thấy ý tưởng.');
+  return c.json({ idea: dto, indexed: dto.indexed });
 }
 
 export async function deleteIdea(c: Ctx): Promise<Response> {

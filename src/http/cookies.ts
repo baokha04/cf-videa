@@ -11,6 +11,10 @@ export function parseCookies(header: string | null): Record<string, string> {
 }
 
 export interface CookieOpts {
+  /**
+   * Bỏ trống = cookie PHIÊN: trình duyệt tự xoá khi đóng. Đó là hành vi cố ý cho
+   * trường hợp không chọn "ghi nhớ đăng nhập", không phải quên đặt.
+   */
   maxAge?: number;
   path?: string;
   sameSite?: 'Lax' | 'Strict' | 'None';

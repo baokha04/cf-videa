@@ -9,6 +9,27 @@ import { newId, now } from '../util/id';
  * 403, để không xác nhận sự tồn tại của hàng thuộc user khác.
  */
 
+/**
+ * Điều kiện "hàng cần đồng bộ lại", dùng chung cho mọi truy vấn để chúng không thể
+ * lệch nhau. Phải khớp CHÍNH XÁC mệnh đề WHERE của idx_ideas_dirty trong
+ * migrations/0004 — lệch một ký tự là SQLite bỏ qua index và quét toàn bảng.
+ *
+ * Hai loại bẩn, và loại thứ hai KHÔNG cần gọi AI:
+ *  - nội dung đổi   → embedded_hash lệch content_hash → phải nhúng lại
+ *  - metadata đổi   → indexed_meta_hash lệch chữ ký hiện tại → chỉ ghi đè metadata
+ */
+export const DIRTY_SQL = `(
+  embedded_hash IS NULL
+  OR embedded_hash <> content_hash
+  OR indexed_meta_hash IS NULL
+  OR indexed_meta_hash <> status || '|' || platform || '|' || visibility
+)`;
+
+/** Hàng này cần nhúng lại (không chỉ cập nhật metadata)? */
+export function needsEmbedding(row: IdeaRow): boolean {
+  return row.embedded_hash === null || row.embedded_hash !== row.content_hash;
+}
+
 export interface IdeaInput {
   title: string;
   hook: string;
@@ -76,6 +97,7 @@ export async function create(
     lang: 'vi',
     content_hash: contentHash,
     embedded_hash: null,
+    indexed_meta_hash: null,
     embedding_model: null,
     embedded_at: null,
     embed_attempts: 0,
@@ -121,8 +143,15 @@ export async function remove(env: Env, userId: string, id: string): Promise<bool
   return (res.meta.changes ?? 0) > 0;
 }
 
-/** Ghi nhận embed thành công. Có điều kiện content_hash để không đánh dấu nhầm
- *  khi người dùng vừa sửa nội dung trong lúc lệnh embed đang chạy. */
+/**
+ * Ghi nhận upsert thành công: cả nội dung lẫn metadata đều đã lên Vectorize.
+ *
+ * Điều kiện `content_hash = ?2` để không đánh dấu nhầm khi người dùng vừa sửa nội
+ * dung trong lúc lệnh embed đang chạy — kết quả cũ về muộn thì bỏ qua.
+ *
+ * Chữ ký metadata lấy từ chính hàng trong DB (không truyền từ ngoài vào) để nó luôn
+ * là trạng thái mới nhất, đúng thứ vừa được gửi lên trong metadata của vector.
+ */
 export async function markEmbedded(
   env: Env,
   id: string,
@@ -131,10 +160,26 @@ export async function markEmbedded(
 ): Promise<void> {
   await env.DB.prepare(
     `UPDATE ideas
-        SET embedded_hash = ?2, embedding_model = ?3, embedded_at = ?4, embed_attempts = 0
+        SET embedded_hash = ?2, embedding_model = ?3, embedded_at = ?4, embed_attempts = 0,
+            indexed_meta_hash = status || '|' || platform || '|' || visibility
       WHERE id = ?1 AND content_hash = ?2`,
   )
     .bind(id, contentHash, model, now())
+    .run();
+}
+
+/**
+ * Ghi nhận đã đồng bộ RIÊNG metadata (dùng lại vector cũ, không gọi AI).
+ * Không đụng embedded_hash: nội dung vẫn đúng như lần nhúng trước.
+ */
+export async function markMetaSynced(env: Env, id: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE ideas
+        SET indexed_meta_hash = status || '|' || platform || '|' || visibility,
+            embed_attempts = 0
+      WHERE id = ?1`,
+  )
+    .bind(id)
     .run();
 }
 
@@ -246,12 +291,8 @@ export async function listDirty(
   userId?: string,
 ): Promise<IdeaRow[]> {
   const sql = userId
-    ? `SELECT * FROM ideas
-        WHERE (embedded_hash IS NULL OR embedded_hash <> content_hash) AND user_id = ?2
-        ORDER BY updated_at LIMIT ?1`
-    : `SELECT * FROM ideas
-        WHERE embedded_hash IS NULL OR embedded_hash <> content_hash
-        ORDER BY updated_at LIMIT ?1`;
+    ? `SELECT * FROM ideas WHERE ${DIRTY_SQL} AND user_id = ?2 ORDER BY updated_at LIMIT ?1`
+    : `SELECT * FROM ideas WHERE ${DIRTY_SQL} ORDER BY updated_at LIMIT ?1`;
   const stmt = userId
     ? env.DB.prepare(sql).bind(limit, userId)
     : env.DB.prepare(sql).bind(limit);
@@ -261,9 +302,8 @@ export async function listDirty(
 
 export async function countDirty(env: Env, userId?: string): Promise<number> {
   const sql = userId
-    ? `SELECT COUNT(*) AS n FROM ideas
-        WHERE (embedded_hash IS NULL OR embedded_hash <> content_hash) AND user_id = ?1`
-    : `SELECT COUNT(*) AS n FROM ideas WHERE embedded_hash IS NULL OR embedded_hash <> content_hash`;
+    ? `SELECT COUNT(*) AS n FROM ideas WHERE ${DIRTY_SQL} AND user_id = ?1`
+    : `SELECT COUNT(*) AS n FROM ideas WHERE ${DIRTY_SQL}`;
   const stmt = userId ? env.DB.prepare(sql).bind(userId) : env.DB.prepare(sql);
   const row = await stmt.first<{ n: number }>();
   return row?.n ?? 0;
@@ -272,8 +312,8 @@ export async function countDirty(env: Env, userId?: string): Promise<number> {
 /** Đánh dấu mọi hàng của một user là bẩn — dùng khi ép reindex toàn bộ. */
 export async function markAllDirty(env: Env, userId?: string): Promise<number> {
   const sql = userId
-    ? `UPDATE ideas SET embedded_hash = NULL WHERE user_id = ?1`
-    : `UPDATE ideas SET embedded_hash = NULL`;
+    ? `UPDATE ideas SET embedded_hash = NULL, indexed_meta_hash = NULL WHERE user_id = ?1`
+    : `UPDATE ideas SET embedded_hash = NULL, indexed_meta_hash = NULL`;
   const stmt = userId ? env.DB.prepare(sql).bind(userId) : env.DB.prepare(sql);
   const res = await stmt.run();
   return res.meta.changes ?? 0;

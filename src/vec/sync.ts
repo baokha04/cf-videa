@@ -8,33 +8,15 @@ import { getVectors, upsertIdeas } from './index';
  * Giữ D1 và Vectorize đồng bộ.
  *
  * BẤT BIẾN: D1 là nguồn sự thật, vector là sản phẩm dẫn xuất.
- * `embedded_hash === content_hash` nghĩa là đã đồng bộ; khác đi nghĩa là "bẩn".
- * Không cần hàng đợi: chính cột đó LÀ hàng đợi thử lại, và đếm được bằng một câu SQL.
- */
-
-/**
- * Index một ý tưởng ngay trong request. Cố ý đồng bộ chứ không đẩy sang waitUntil:
- * người dùng vừa lưu thì mong tìm thấy ngay, còn lỗi trong waitUntil thì vô hình và
- * không có ai thử lại. Chi phí là ~200–500ms chờ I/O (không phải CPU nên không đụng
- * hạn mức CPU), và giao diện hiển thị trạng thái đang lưu.
  *
- * Trả về true nếu index thành công. KHÔNG bao giờ ném lỗi ra ngoài: một trục trặc
- * của Workers AI không được phép làm mất bài viết của người dùng.
+ * Tạo và sửa ý tưởng KHÔNG đụng tới Vectorize — chúng chỉ ghi D1, và hàng trở thành
+ * "bẩn". Toàn bộ việc index dồn về đây, chạy khi người dùng bấm nút đồng bộ.
+ *
+ * Hai cột quyết định một hàng có bẩn hay không, xem src/db/ideas.ts:
+ *   embedded_hash     — nội dung đã nhúng lần gần nhất
+ *   indexed_meta_hash — chữ ký metadata đã gửi lần gần nhất
+ * Không cần hàng đợi: hai cột đó LÀ hàng đợi, và đếm được bằng một câu SQL.
  */
-export async function indexIdea(env: Env, idea: IdeaRow, tags: string[]): Promise<boolean> {
-  try {
-    const text = buildEmbedText(idea, tags);
-    const [values] = await embed(env, [text]);
-    if (!values) throw new Error('không nhận được vector');
-    await upsertIdeas(env, [{ idea, values }]);
-    await ideasDb.markEmbedded(env, idea.id, idea.content_hash, MODEL_ID);
-    return true;
-  } catch (err) {
-    console.error('indexIdea failed', idea.id, err);
-    await ideasDb.markEmbedFailed(env, idea.id).catch(() => {});
-    return false;
-  }
-}
 
 /**
  * Cập nhật metadata của vector mà KHÔNG embed lại.
@@ -46,13 +28,14 @@ export async function indexIdea(env: Env, idea: IdeaRow, tags: string[]): Promis
  * những ý tưởng đã publish.
  *
  * Dùng lại vector đã lưu qua getByIds thay vì gọi lại Workers AI — rẻ hơn hẳn.
- * Trả về false nếu chưa có vector; khi đó gọi indexIdea() để đi đường đầy đủ.
+ * Trả về false nếu chưa có vector; khi đó reconcile() sẽ đi đường nhúng đầy đủ.
  */
 export async function refreshVectorMetadata(env: Env, idea: IdeaRow): Promise<boolean> {
   try {
     const values = (await getVectors(env, [idea.id])).get(idea.id);
     if (!values) return false;
     await upsertIdeas(env, [{ idea, values }]);
+    await ideasDb.markMetaSynced(env, idea.id);
     return true;
   } catch (err) {
     console.error('refreshVectorMetadata failed', idea.id, err);
@@ -85,47 +68,61 @@ export async function reconcile(
     return { processed: 0, failed: 0, remaining: 0 };
   }
 
-  const tagMap = await tagsForIdeas(env, rows.map((r) => r.id));
+  // Hai loại hàng bẩn, và tách chúng ra là điều đáng làm: loại chỉ đổi metadata
+  // (ví dụ đổi trạng thái từ "ý tưởng" sang "đã đăng") dùng lại được vector đã lưu,
+  // nên KHÔNG tốn một lời gọi Workers AI nào. Với người dùng hay đổi trạng thái thì
+  // đây là phần lớn công việc đồng bộ.
+  const needEmbed = rows.filter(ideasDb.needsEmbedding);
+  const metaOnly = rows.filter((r) => !ideasDb.needsEmbedding(r));
+
   let processed = 0;
   let failed = 0;
 
-  for (let i = 0; i < rows.length; i += EMBED_BATCH) {
-    const chunk = rows.slice(i, i + EMBED_BATCH);
-    const texts = chunk.map((r) => buildEmbedText(r, tagMap.get(r.id) ?? []));
-    let vectors: number[][];
-    try {
-      vectors = await embed(env, texts);
-    } catch (err) {
-      console.error('reconcile embed batch failed', err);
-      failed += chunk.length;
-      await Promise.all(chunk.map((r) => ideasDb.markEmbedFailed(env, r.id).catch(() => {})));
-      continue;
+  for (const idea of metaOnly) {
+    if (await refreshVectorMetadata(env, idea)) {
+      processed++;
+    } else {
+      // Không lấy được vector cũ (chưa từng index, hoặc Vectorize lỗi) → xử lý như
+      // hàng cần nhúng lại, để lần sau đi đường đầy đủ.
+      needEmbed.push(idea);
     }
+  }
 
-    const pairs = chunk
-      .map((idea, j) => ({ idea, values: vectors[j] }))
-      .filter((p): p is { idea: IdeaRow; values: number[] } => Array.isArray(p.values));
+  if (needEmbed.length > 0) {
+    const tagMap = await tagsForIdeas(env, needEmbed.map((r) => r.id));
 
-    for (let k = 0; k < pairs.length; k += UPSERT_BATCH) {
-      const slice = pairs.slice(k, k + UPSERT_BATCH);
+    for (let i = 0; i < needEmbed.length; i += EMBED_BATCH) {
+      const chunk = needEmbed.slice(i, i + EMBED_BATCH);
+      const texts = chunk.map((r) => buildEmbedText(r, tagMap.get(r.id) ?? []));
+      let vectors: number[][];
       try {
-        await upsertIdeas(env, slice);
-        await env.DB.batch(
-          slice.map(({ idea }) =>
-            env.DB.prepare(
-              `UPDATE ideas SET embedded_hash = ?2, embedding_model = ?3, embedded_at = ?4,
-                                embed_attempts = 0
-                WHERE id = ?1 AND content_hash = ?2`,
-            ).bind(idea.id, idea.content_hash, MODEL_ID, Date.now()),
-          ),
-        );
-        processed += slice.length;
+        vectors = await embed(env, texts);
       } catch (err) {
-        console.error('reconcile upsert batch failed', err);
-        failed += slice.length;
-        await Promise.all(
-          slice.map(({ idea }) => ideasDb.markEmbedFailed(env, idea.id).catch(() => {})),
-        );
+        console.error('reconcile embed batch failed', err);
+        failed += chunk.length;
+        await Promise.all(chunk.map((r) => ideasDb.markEmbedFailed(env, r.id).catch(() => {})));
+        continue;
+      }
+
+      const pairs = chunk
+        .map((idea, j) => ({ idea, values: vectors[j] }))
+        .filter((p): p is { idea: IdeaRow; values: number[] } => Array.isArray(p.values));
+
+      for (let k = 0; k < pairs.length; k += UPSERT_BATCH) {
+        const slice = pairs.slice(k, k + UPSERT_BATCH);
+        try {
+          await upsertIdeas(env, slice);
+          await Promise.all(
+            slice.map(({ idea }) => ideasDb.markEmbedded(env, idea.id, idea.content_hash, MODEL_ID)),
+          );
+          processed += slice.length;
+        } catch (err) {
+          console.error('reconcile upsert batch failed', err);
+          failed += slice.length;
+          await Promise.all(
+            slice.map(({ idea }) => ideasDb.markEmbedFailed(env, idea.id).catch(() => {})),
+          );
+        }
       }
     }
   }

@@ -21,6 +21,19 @@ export interface IdeaVectorMeta extends Record<string, VectorizeVectorMetadataVa
   updated_at: number;
 }
 
+/**
+ * Chữ ký metadata của một ý tưởng.
+ *
+ * Phải khớp CHÍNH XÁC biểu thức trong SQL ở migrations/0004 và src/db/ideas.ts:
+ *   status || '|' || platform || '|' || visibility
+ * Lệch nhau thì hàng sẽ hoặc bẩn vĩnh viễn, hoặc không bao giờ được đồng bộ lại.
+ */
+export function metaSignature(
+  idea: Pick<IdeaRow, 'status' | 'platform' | 'visibility'>,
+): string {
+  return `${idea.status}|${idea.platform}|${idea.visibility}`;
+}
+
 export function metaFor(idea: IdeaRow): IdeaVectorMeta {
   return {
     user_id: idea.user_id,

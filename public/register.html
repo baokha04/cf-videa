@@ -2,12 +2,19 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover: cho phép nội dung tràn ra sát mép màn hình iPhone; CSS
+     dùng env(safe-area-inset-*) để tránh Dynamic Island và thanh home. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>Đăng ký · cf-videa</title>
 <link rel="stylesheet" href="/css/app.css">
+<!-- Đồng bộ, KHÔNG defer: phải áp giao diện trước khung hình đầu tiên để không nháy. -->
+<script src="/js/theme-init.js"></script>
 </head>
 <body>
 <main class="narrow">
+  <div class="topbar" id="themebar"></div>
   <h1>Tạo tài khoản</h1>
   <p class="sub">Lưu, tìm và khơi lại ý tưởng short video của riêng bạn.</p>
   <div class="card">
@@ -22,6 +29,14 @@
       <input id="password" name="password" type="password" autocomplete="new-password"
              minlength="10" maxlength="200" required>
       <p class="small muted" id="pwhint">Tối thiểu 10 ký tự. Một cụm từ dài dễ nhớ tốt hơn một chuỗi ngắn rắc rối.</p>
+
+      <label class="check" for="remember">
+        <input id="remember" name="remember" type="checkbox" checked>
+        <span>
+          Ghi nhớ đăng nhập
+          <span class="hint">Bỏ trống nếu đang dùng máy chung — đóng trình duyệt là tự đăng xuất.</span>
+        </span>
+      </label>
 
       <div class="actions">
         <button class="primary" type="submit" id="submit">Đăng ký</button>
