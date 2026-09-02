@@ -19,7 +19,7 @@ function query(withCursor) {
   const p = new URLSearchParams();
   const q = $('#q').value.trim();
   if (q) p.set('q', q);
-  for (const id of ['status', 'platform', 'tag']) {
+  for (const id of ['status', 'platform', 'tag', 'kind']) {
     const v = $(`#${id}`).value;
     if (v) p.set(id, v);
   }
@@ -33,7 +33,9 @@ async function load(append = false) {
     const data = await get(query(append));
     items = append ? items.concat(data.items) : data.items;
     cursor = data.next_cursor;
-    renderList(listEl, items, 'Chưa có ý tưởng nào khớp. Hãy tạo ý tưởng đầu tiên.');
+    renderList(listEl, items, 'Chưa có ý tưởng nào khớp. Hãy tạo ý tưởng đầu tiên.', {
+      sync: true,
+    });
     moreBtn.hidden = !cursor;
   } catch (err) {
     show(msgEl, err.message);
@@ -143,9 +145,50 @@ reindexBtn.addEventListener('click', async () => {
   }
 });
 
+/**
+ * Nút đồng bộ của RIÊNG một thẻ.
+ *
+ * Uỷ quyền sự kiện trên cả danh sách thay vì gắn handler cho từng nút: danh sách
+ * được render lại bằng innerHTML sau mỗi lần lọc hay tải thêm, nên handler gắn
+ * trực tiếp sẽ biến mất cùng với DOM cũ.
+ */
+listEl.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button.sync-one');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  if (!id) return;
+
+  const original = btn.textContent.trim();
+  btn.disabled = true;
+  btn.textContent = 'Đang đồng bộ…';
+  show(msgEl, '');
+  try {
+    const r = await post(`/api/ideas/${encodeURIComponent(id)}/reindex`);
+    if (r.outcome === 'failed') {
+      show(msgEl, 'Đồng bộ ý tưởng này không thành công. Thử lại sau ít phút.');
+    } else if (r.outcome === 'clean') {
+      show(msgEl, 'Ý tưởng này vốn đã khớp với tìm kiếm ngữ nghĩa.', 'ok');
+    } else {
+      // Vector vừa ghi mất khoảng một phút mới truy vấn được — nói rõ để người dùng
+      // không tưởng tìm kiếm hỏng khi thử ngay lập tức.
+      show(
+        msgEl,
+        'Đã đồng bộ ý tưởng này. Tìm kiếm ngữ nghĩa sẽ thấy nó sau khoảng một phút.',
+        'ok',
+      );
+    }
+    await refreshSyncState();
+    await load(false);
+  } catch (err) {
+    show(msgEl, err.message);
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+});
+
 // Đọc bộ lọc từ URL để trang chia sẻ được.
 const initial = new URLSearchParams(location.search);
-for (const id of ['q', 'status', 'platform', 'tag']) {
+for (const id of ['q', 'status', 'platform', 'tag', 'kind']) {
   const v = initial.get(id);
   if (v) $(`#${id}`).value = v;
 }

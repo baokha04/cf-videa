@@ -313,6 +313,25 @@ button.link {
 }
 .chip.score { color: var(--ok); }
 .chip.pending { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
+.chip.variant { color: var(--accent); border-color: var(--accent); background: transparent; }
+
+/* Nút đồng bộ của riêng từng thẻ. Tách hẳn xuống một hàng dưới phần meta để không
+   bị lẫn vào đám chip, và giữ đúng vùng chạm 44px như mọi nút khác. */
+.idea-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.idea-actions button { font-size: 14px; padding: 0 14px; }
+@media (max-width: 560px) { .idea-actions button { flex: 1 1 100%; } }
+
+/* Dòng "biến thể của …" ngay dưới tiêu đề trang ý tưởng. */
+.parent-of {
+  margin: -6px 0 18px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.parent-of a { color: var(--accent); }
 
 /* --- Thanh đồng bộ ------------------------------------------------------- */
 /* Nổi bật hơn thẻ thường: đây là hành động người dùng phải chủ động làm, vì việc

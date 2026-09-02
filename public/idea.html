@@ -16,6 +16,9 @@
 <main>
   <h1 id="heading">Ý tưởng mới</h1>
   <p class="sub" id="sub">Ghi lại trước khi quên.</p>
+  <p class="parent-of" id="parent-of" hidden>
+    Biến thể của <a id="parent-link" href="/app">ý tưởng gốc</a>.
+  </p>
 
   <div class="card">
     <form id="f" novalidate>
@@ -54,11 +57,29 @@
       <label for="tags">Tag <span class="muted small">(ngăn cách bằng dấu phẩy)</span></label>
       <input id="tags" placeholder="quay phim, mẹo">
 
+      <label for="source_idea">Ý tưởng gốc
+        <span class="muted small">(bản thô, giữ nguyên văn để còn đối chiếu)</span></label>
+      <textarea id="source_idea" maxlength="8000" rows="4"></textarea>
+
       <label for="script_outline">Dàn ý kịch bản</label>
       <textarea id="script_outline" maxlength="8000"></textarea>
 
+      <label for="prompt_recipe">Prompt công thức
+        <span class="muted small">(viết một lần, dán lại cho mọi biến thể)</span></label>
+      <textarea id="prompt_recipe" maxlength="4000" rows="4"></textarea>
+
+      <label for="negative_prompt">Negative prompt
+        <span class="muted small">(thứ KHÔNG được xuất hiện)</span></label>
+      <textarea id="negative_prompt" maxlength="2000" rows="3"></textarea>
+
+      <label for="hooks">Danh mục video hook
+        <span class="muted small">(mỗi dòng một hook, dòng đầu là hook bạn đang ưng nhất)</span></label>
+      <textarea id="hooks" rows="4"
+                placeholder="Bạn đã bao giờ…&#10;3 giây đầu quyết định tất cả&#10;Đừng làm điều này khi quay"></textarea>
+
       <div class="actions">
         <button class="primary" type="submit" id="save">Lưu</button>
+        <button type="button" id="sync" hidden>Đồng bộ index</button>
         <button type="button" id="like" hidden></button>
         <button type="button" id="del" class="danger" hidden>Xoá</button>
         <a href="/app"><button type="button">Quay lại</button></a>
@@ -66,6 +87,17 @@
     </form>
     <p id="msg" class="msg"></p>
   </div>
+
+  <!-- Danh mục ý tưởng biến thể. Chỉ ý tưởng gốc mới có; một biến thể không đẻ
+       tiếp biến thể (cây đúng một tầng). -->
+  <section id="variants-wrap" hidden>
+    <h2>Ý tưởng biến thể</h2>
+    <p class="sub" id="variants-sub">Các bản mọc ra từ ý tưởng gốc này.</p>
+    <div class="actions">
+      <button type="button" id="new-variant">+ Tạo biến thể từ ý tưởng này</button>
+    </div>
+    <div id="variants" class="list"></div>
+  </section>
 
   <section id="similar-wrap" hidden>
     <h2>Ý tưởng tương tự</h2>

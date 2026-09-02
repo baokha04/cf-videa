@@ -2,9 +2,11 @@
 
 Kho ý tưởng short video có quản lý tài khoản, chạy trên Cloudflare Pages + D1 + Vectorize.
 
-Mỗi người dùng có kho ý tưởng riêng (tiêu đề, hook, dàn ý kịch bản, nền tảng, niche, tag,
-trạng thái), tìm được **theo ý nghĩa** chứ không chỉ theo từ khoá, và được gợi ý lại những
-ý tưởng cũ hợp gu mà mình đã quên.
+Mỗi người dùng có kho ý tưởng riêng (tiêu đề, hook, dàn ý kịch bản, ý tưởng gốc, prompt
+công thức, negative prompt, danh mục video hook, nền tảng, niche, tag, trạng thái), tìm
+được **theo ý nghĩa** chứ không chỉ theo từ khoá, và được gợi ý lại những ý tưởng cũ hợp
+gu mà mình đã quên. Mỗi ý tưởng gốc còn đẻ ra được một **danh mục ý tưởng biến thể** kế
+thừa sẵn nguyên liệu của bản gốc.
 
 **Không có LLM sinh nội dung ở đâu trong dự án này.** Lời gọi AI duy nhất là tạo *embedding*
 để index và truy vấn chính dữ liệu bạn đã nhập.
@@ -98,22 +100,29 @@ cách sửa duy nhất là upsert lại toàn bộ. Chạy trọn khối này tr
 
 ```bash
 for ix in videa-ideas videa-ideas-preview; do
-  for p in user_id status platform visibility; do
+  for p in user_id status platform visibility kind; do
     npx wrangler vectorize create-metadata-index $ix --property-name=$p --type=string
   done
 done
 ```
 
 Việc tạo metadata index là **bất đồng bộ** — lệnh trên chỉ trả về "enqueued". Đo thật:
-mất tới **~90 giây** để cả 4 property hiện ra. Phải poll cho đến khi đủ 4, **rồi mới**
+mất tới **~90 giây** để cả 5 property hiện ra. Phải poll cho đến khi đủ 5, **rồi mới**
 tạo ý tưởng đầu tiên:
 
 ```bash
 until [ "$(npx wrangler vectorize list-metadata-index videa-ideas \
-           | grep -cE 'user_id|status|platform|visibility')" -ge 4 ]; do
+           | grep -cE 'user_id|status|platform|visibility|kind')" -ge 5 ]; do
   echo "chờ metadata index..."; sleep 15
 done
 ```
+
+**Nếu index của bạn đã có dữ liệu từ trước migration 0005:** `kind` là property mới, nên
+phải tạo metadata index cho nó **trước** lần đồng bộ kế tiếp. Vector ghi trước khi index
+đó tồn tại sẽ không nằm trong nó, và `/api/search?kind=…` sẽ lọc hụt mà không báo lỗi.
+Migration 0005 cố ý để mọi hàng đã index thành "bẩn metadata" nên chỉ cần bấm
+**"Đồng bộ index"** một lần sau khi metadata index sẵn sàng — loại bẩn này dùng lại
+vector đã lưu nên **không tốn một lời gọi Workers AI nào**.
 
 Hai cái bẫy nữa của CLI, cả hai đều hỏng âm thầm:
 
@@ -128,9 +137,15 @@ Hai cái bẫy nữa của CLI, cả hai đều hỏng âm thầm:
 
 ### Migration và secret
 
+Chạy **tất cả** file trong `migrations/` theo đúng thứ tự tên, không phải mỗi
+`0001_init.sql` — mỗi migration về sau đều thêm cột hoặc bảng mà code hiện tại cần:
+
 ```bash
-npx wrangler d1 execute videa-db         --remote --file=./migrations/0001_init.sql
-npx wrangler d1 execute videa-db-preview --remote --file=./migrations/0001_init.sql
+for db in videa-db videa-db-preview; do
+  for f in migrations/*.sql; do
+    npx wrangler d1 execute "$db" --remote --file="$f"
+  done
+done
 
 npx wrangler pages project create cf-videa --production-branch=main
 npx wrangler pages secret put ADMIN_TOKEN               # production
@@ -142,7 +157,7 @@ npx wrangler pages secret put ADMIN_TOKEN --env preview
 ## Phát triển
 
 ```bash
-npx wrangler d1 execute videa-db --local --file=./migrations/0001_init.sql
+npm run db:local                  # chạy hết migrations/*.sql lên D1 local
 cp .dev.vars.example .dev.vars
 npx wrangler pages dev            # http://localhost:8788
 ```
@@ -184,6 +199,46 @@ thứ không thể chẩn đoán. Vì vậy khi `APP_ENV` **khác** `production`
 thêm trường `error.debug` chứa tên lỗi, thông điệp và 6 dòng đầu của stack. Trên production
 thì tuyệt đối không — chỉ ghi log. Chính cơ chế này đã tìm ra trần 100.000 vòng ở mục 1.
 
+### Kho ý tưởng: nguyên liệu, danh mục hook và danh mục biến thể
+
+Một ý tưởng không chỉ là tiêu đề với dàn ý. Ba trường nguyên liệu tách riêng thay vì gộp
+chung vào `script_outline`:
+
+| Trường | Là gì | Vì sao tách riêng |
+|---|---|---|
+| `source_idea` | Ý tưởng gốc, giữ **nguyên văn** như lúc nghĩ ra hoặc chép về | Dàn ý bị viết lại liên tục; bản gốc phải còn nguyên để đối chiếu và để đẻ biến thể |
+| `prompt_recipe` | Prompt **công thức**, viết một lần rồi dán lại | Nó thuộc về cách *sản xuất*, không phải nội dung — và tái dùng nguyên văn cho nhiều ý tưởng |
+| `negative_prompt` | Thứ **không** được xuất hiện | Cùng lý do trên, và nó là dấu trừ nên càng không được lẫn vào nội dung |
+
+**Danh mục video hook** (`idea_hooks`) là nhiều cách mở đầu cho cùng một ý tưởng. Cột
+`ideas.hook` cũ vẫn là hook *đang dùng* — thứ hiện trên thẻ; bảng mới giữ những cách mở
+đầu khác đã nghĩ ra, để thử qua thử lại mà không mất bản cũ. Thứ tự do người dùng sắp và
+được giữ nguyên (cột `position`), **không** sắp lại theo bảng chữ cái như tag: hook đầu
+danh sách thường là hook đang ưng nhất.
+
+**Danh mục ý tưởng biến thể** nằm **cùng bảng** `ideas`, phân biệt bằng `kind`
+(`origin` | `variant`) và `parent_id`. Không tách bảng riêng vì một biến thể vẫn phải tìm
+được, thích được, index được và đổi trạng thái được y hệt một ý tưởng thường — tách bảng
+là nhân đôi toàn bộ những thứ đó.
+
+Cây đúng **một tầng**: cha của một biến thể luôn là ý tưởng gốc. Cây một tầng thì không
+thể có chu trình, và danh mục biến thể luôn đọc được bằng đúng một truy vấn. Ràng buộc
+này nằm **trong chính câu lệnh** `INSERT`/`UPDATE` (`PARENT_SQL` ở `src/db/ideas.ts`):
+`parent_id` chỉ nhận giá trị khi hàng cha có thật, thuộc đúng user đang thao tác, bản
+thân là `origin`, không phải chính hàng đang ghi, và hàng đang ghi chưa có biến thể nào
+của riêng nó. `kind` được suy ra từ *chính truy vấn con đó*, nên cặp `(kind, parent_id)`
+không bao giờ mâu thuẫn — không có biến thể mồ côi, kể cả khi hàng cha vừa bị xoá xong.
+Route vẫn kiểm trước, nhưng chỉ để có thông báo lỗi tử tế; bỏ nó đi thì dữ liệu vẫn đúng.
+
+`POST /api/ideas/:id/variants` chép sẵn ý tưởng gốc, công thức prompt, negative prompt,
+niche, nền tảng và tag từ bản gốc sang — đó chính là điều làm nó là "biến thể" chứ không
+phải một ý tưởng mới tinh. Cố ý **không** chép danh mục hook: hook là thứ người ta muốn
+thử khác đi ở mỗi biến thể.
+
+Xoá ý tưởng gốc là cascade xoá cả danh mục biến thể của nó. **Vectorize không biết gì về
+cascade**, nên route xoá gom id các biến thể lại *trước* lệnh `DELETE`; không làm vậy thì
+vector của chúng ở lại vĩnh viễn và chiếm chỗ trong `topK` của mọi truy vấn về sau.
+
 ### Index vector là thao tác THỦ CÔNG, và đó là chủ ý
 
 Tạo và sửa ý tưởng **chỉ ghi D1**. Không nhúng, không gọi Workers AI, không đụng
@@ -199,18 +254,39 @@ và làm thao tác lưu nhanh hơn nhiều.
 
 | Thay đổi | Cột lệch | Việc đồng bộ phải làm |
 |---|---|---|
-| Sửa tiêu đề, hook, kịch bản, niche, tag, nền tảng | `embedded_hash` ≠ `content_hash` | nhúng lại rồi upsert |
-| Chỉ đổi **trạng thái** | `indexed_meta_hash` ≠ chữ ký hiện tại | lấy lại vector cũ, ghi đè metadata |
+| Sửa tiêu đề, hook, kịch bản, **ý tưởng gốc**, **danh mục hook**, niche, tag, nền tảng | `embedded_hash` ≠ `content_hash` | nhúng lại rồi upsert |
+| Chỉ đổi **trạng thái** hoặc **gốc ↔ biến thể** | `indexed_meta_hash` ≠ chữ ký hiện tại | lấy lại vector cũ, ghi đè metadata |
 
-Loại thứ hai là cái bẫy: `status` nằm trong metadata của vector nhưng KHÔNG nằm trong
-văn bản đem đi nhúng, nên đổi trạng thái không làm `content_hash` đổi. Nếu chỉ dựa vào
-`content_hash` để biết hàng nào cần đồng bộ thì metadata trên Vectorize sẽ mốc lại
-vĩnh viễn và `/api/search?status=…` lọc sai mà không có dấu hiệu gì. Cột
-`indexed_meta_hash` (migrations/0004) tồn tại chỉ để bịt chỗ đó.
+Loại thứ hai là cái bẫy: `status` (và từ 0005 là cả `kind`) nằm trong metadata của
+vector nhưng KHÔNG nằm trong văn bản đem đi nhúng, nên đổi trạng thái không làm
+`content_hash` đổi. Nếu chỉ dựa vào `content_hash` để biết hàng nào cần đồng bộ thì
+metadata trên Vectorize sẽ mốc lại vĩnh viễn và `/api/search?status=…` lọc sai mà không
+có dấu hiệu gì. Cột `indexed_meta_hash` (migrations/0004, mở rộng ở 0005) tồn tại chỉ
+để bịt chỗ đó.
+
+Chữ ký metadata được viết ở **ba nơi phải khớp nhau từng ký tự** — `META_SIG_SQL` trong
+`src/db/ideas.ts`, `metaSignature()` trong `src/vec/index.ts`, và mệnh đề `WHERE` của
+`idx_ideas_dirty` ở `migrations/0005`. Lệch một ký tự thì hàng hoặc bẩn vĩnh viễn, hoặc
+không bao giờ được đồng bộ lại; lệch riêng ở index thì SQLite bỏ qua index và quét
+toàn bảng.
+
+**Hai trường cố ý KHÔNG đem đi nhúng:** `prompt_recipe` là công thức tái dùng, dán y hệt
+nhau cho cả chục ý tưởng — nhúng vào thì "ý tưởng tương tự" biến thành "cùng dùng một
+công thức". `negative_prompt` liệt kê thứ phải TRÁNH — nhúng vào là đọc dấu trừ thành
+dấu cộng. Cả hai vẫn tìm lại được bằng tìm từ khoá trên D1, nên chúng không biến mất
+khỏi tìm kiếm, chỉ không làm nhiễu không gian vector.
 
 Thanh đồng bộ trên trang kho ý tưởng **luôn hiển thị**, kể cả khi đã sạch, và lấy số
 đếm từ `GET /api/sync` chứ không đếm trên danh sách đang hiện — danh sách bị phân
 trang và lọc, đếm trên đó sẽ bỏ sót ý tưởng nằm ngoài trang hiện tại.
+
+**Mỗi ý tưởng còn có nút đồng bộ riêng** (`POST /api/ideas/:id/reindex`), trên từng thẻ
+ở trang kho và trong trang chi tiết. Không dùng lại `reconcile(limit = 1)` cho việc này:
+`reconcile` lấy hàng bẩn theo thứ tự `updated_at`, nên nó sẽ đồng bộ *một ý tưởng nào
+đó* chứ không phải ý tưởng vừa được bấm — một nút gắn trên thẻ này mà đi làm việc cho
+thẻ khác là thứ không giải thích được. Nút riêng cũng chọn đúng đường rẻ: hàng chỉ đổi
+metadata dùng lại vector đã lưu và không tốn lời gọi AI nào; hàng đã sạch thì trả
+`outcome: "clean"` và không làm gì cả.
 
 ### Bảo trì định kỳ — không có cron, và đó là chủ ý
 
@@ -335,12 +411,15 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | GET | `/api/auth/sessions` | ✓ | |
 | DELETE | `/api/auth/sessions/:id` | ✓ | |
 | POST | `/api/auth/revoke-all` | ✓ | Giữ lại phiên hiện tại |
-| GET | `/api/ideas` | ✓ | Lọc + tìm từ khoá, phân trang keyset |
+| GET | `/api/ideas` | ✓ | Lọc (`status`, `platform`, `tag`, `kind`, `parent`) + tìm từ khoá, phân trang keyset |
 | POST | `/api/ideas` | ✓ | **Chỉ ghi D1**, không nhúng, không đụng Vectorize |
 | GET · PATCH · DELETE | `/api/ideas/:id` | ✓ | 404 khi không phải của bạn |
 | POST · DELETE | `/api/ideas/:id/like` | ✓ | Idempotent |
 | GET | `/api/ideas/:id/similar` | ✓ | Dùng lại vector đã lưu |
-| GET | `/api/search` | ✓ | Ngữ nghĩa; lùi về từ khoá khi AI/Vectorize hỏng |
+| GET | `/api/ideas/:id/variants` | ✓ | Danh mục ý tưởng biến thể của một ý tưởng gốc |
+| POST | `/api/ideas/:id/variants` | ✓ | Tạo biến thể, kế thừa nguyên liệu của bản gốc |
+| POST | `/api/ideas/:id/reindex` | ✓ | Nút đồng bộ của RIÊNG ý tưởng này |
+| GET | `/api/search` | ✓ | Ngữ nghĩa, lọc thêm được `kind`; lùi về từ khoá khi AI/Vectorize hỏng |
 | GET | `/api/recommendations` | ✓ | `basis: likes \| cold_start` |
 | GET | `/api/tags` | ✓ | |
 | GET | `/api/sync` | ✓ | Đếm ý tưởng của chính mình chưa được index |
@@ -351,6 +430,20 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 ## Giao diện
 
 **HTML tĩnh + ES module thuần, không có bước build** — xem phần Frontend ở trên.
+
+**Trang kho ý tưởng** có thêm bộ lọc **Danh mục** (tất cả / kho ý tưởng gốc / ý tưởng
+biến thể), và **mỗi thẻ có nút đồng bộ index của riêng nó**. Nút trên thẻ dùng uỷ quyền
+sự kiện ở cấp danh sách chứ không gắn thẳng vào từng nút: danh sách được render lại bằng
+`innerHTML` sau mỗi lần lọc, tải thêm hay đồng bộ, nên handler gắn trực tiếp sẽ biến mất
+cùng DOM cũ.
+
+**Trang ý tưởng** có ô cho ba trường nguyên liệu và một ô **Danh mục video hook** —
+mỗi dòng một hook. Ô nhiều dòng thay vì danh sách nút thêm/xoá: người ta chép cả nắm hook
+từ nơi khác về, và dán một lần vẫn nhanh hơn bấm mười lần.
+
+Ý tưởng gốc có mục **Ý tưởng biến thể** kèm nút tạo biến thể; biến thể thì thay vào đó
+hiện một dòng trỏ ngược về bản gốc và **không** có mục biến thể của riêng nó — cây đúng
+một tầng, hiện một mục không bao giờ có gì chỉ gây hiểu nhầm.
 
 **Chuyển sáng/tối.** Nút trên thanh điều hướng (và trên trang đăng nhập/đăng ký) chạy
 vòng: theo hệ thống → sáng → tối. Giữ lại lựa chọn "theo hệ thống" chứ không chỉ hai

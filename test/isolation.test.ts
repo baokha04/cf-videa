@@ -16,9 +16,14 @@ const INPUT = {
   title: 'Bí mật của A',
   hook: 'hook của A',
   script_outline: 'kịch bản của A',
+  source_idea: 'ý tưởng gốc của A',
+  prompt_recipe: 'công thức của A',
+  negative_prompt: 'tránh của A',
   platform: 'tiktok' as const,
   niche: 'ẩm thực',
   status: 'idea' as const,
+  kind: 'origin' as const,
+  parent_id: null,
 };
 
 async function mkUser(email: string) {

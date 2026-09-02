@@ -1,8 +1,9 @@
 import type { Env, IdeaRow } from '../types';
 import * as ideasDb from '../db/ideas';
 import { tagsForIdeas } from '../db/tags';
-import { buildEmbedText, embed, MODEL_ID } from './embeddings';
-import { getVectors, upsertIdeas } from './index';
+import { hooksForIdeas } from '../db/hooks';
+import { buildEmbedText, embed, embedOne, MODEL_ID } from './embeddings';
+import { getVectors, metaSignature, upsertIdeas } from './index';
 
 /**
  * Giữ D1 và Vectorize đồng bộ.
@@ -89,11 +90,17 @@ export async function reconcile(
   }
 
   if (needEmbed.length > 0) {
-    const tagMap = await tagsForIdeas(env, needEmbed.map((r) => r.id));
+    const ids = needEmbed.map((r) => r.id);
+    const [tagMap, hookMap] = await Promise.all([
+      tagsForIdeas(env, ids),
+      hooksForIdeas(env, ids),
+    ]);
 
     for (let i = 0; i < needEmbed.length; i += EMBED_BATCH) {
       const chunk = needEmbed.slice(i, i + EMBED_BATCH);
-      const texts = chunk.map((r) => buildEmbedText(r, tagMap.get(r.id) ?? []));
+      const texts = chunk.map((r) =>
+        buildEmbedText(r, tagMap.get(r.id) ?? [], hookMap.get(r.id) ?? []),
+      );
       let vectors: number[][];
       try {
         vectors = await embed(env, texts);
@@ -129,6 +136,73 @@ export async function reconcile(
 
   const remaining = await ideasDb.countDirty(env, userId);
   return { processed, failed, remaining };
+}
+
+/**
+ * Kết quả của nút "đồng bộ index" gắn trên TỪNG ý tưởng.
+ *
+ *  clean      — đã khớp sẵn, không phải làm gì (và không gọi AI)
+ *  meta       — chỉ ghi đè metadata, dùng lại vector đã lưu, không gọi AI
+ *  embedded   — nhúng lại rồi upsert
+ *  failed     — Workers AI hoặc Vectorize hỏng; hàng vẫn nguyên vẹn và vẫn bẩn
+ */
+export type SyncIdeaOutcome = 'clean' | 'meta' | 'embedded' | 'failed';
+
+export interface SyncIdeaResult {
+  outcome: SyncIdeaOutcome;
+  indexed: boolean;
+}
+
+/**
+ * Đồng bộ ĐÚNG MỘT ý tưởng.
+ *
+ * Vì sao không dùng lại reconcile() với limit = 1: reconcile lấy hàng bẩn theo thứ
+ * tự updated_at, nên nó sẽ đồng bộ một ý tưởng NÀO ĐÓ chứ không phải ý tưởng người
+ * dùng vừa bấm nút. Nút gắn trên một thẻ mà lại đi làm việc cho thẻ khác là thứ
+ * không giải thích được.
+ *
+ * Quyền sở hữu ràng buộc ngay ở truy vấn đầu tiên: id của người khác trả về null,
+ * và route biến null thành 404 — không xác nhận sự tồn tại của hàng thuộc user khác.
+ *
+ * `force` bỏ qua bước kiểm tra "đã sạch" và ghi lại vector. Dùng khi vector biến mất
+ * khỏi Vectorize mà D1 vẫn tưởng là sạch — trạng thái mà không cột nào phát hiện
+ * được, vì D1 chỉ ghi lại thứ nó đã GỬI ĐI, không phải thứ hiện có ở đầu kia.
+ */
+export async function syncIdea(
+  env: Env,
+  userId: string,
+  ideaId: string,
+  force = false,
+): Promise<SyncIdeaResult | null> {
+  const row = await ideasDb.getById(env, userId, ideaId);
+  if (!row) return null;
+
+  const dirty = ideasDb.needsEmbedding(row) || row.indexed_meta_hash !== metaSignature(row);
+  if (!dirty && !force) return { outcome: 'clean', indexed: true };
+
+  // Đường rẻ trước: nội dung không đổi thì dùng lại vector đã lưu, chỉ ghi đè
+  // metadata. Không tốn một lời gọi Workers AI nào.
+  if (!ideasDb.needsEmbedding(row) && (await refreshVectorMetadata(env, row))) {
+    return { outcome: 'meta', indexed: true };
+  }
+
+  const [tagMap, hookMap] = await Promise.all([
+    tagsForIdeas(env, [ideaId]),
+    hooksForIdeas(env, [ideaId]),
+  ]);
+  try {
+    const values = await embedOne(
+      env,
+      buildEmbedText(row, tagMap.get(ideaId) ?? [], hookMap.get(ideaId) ?? []),
+    );
+    await upsertIdeas(env, [{ idea: row, values }]);
+    await ideasDb.markEmbedded(env, row.id, row.content_hash, MODEL_ID);
+    return { outcome: 'embedded', indexed: true };
+  } catch (err) {
+    console.error('syncIdea failed', ideaId, err);
+    await ideasDb.markEmbedFailed(env, ideaId).catch(() => {});
+    return { outcome: 'failed', indexed: false };
+  }
 }
 
 /** Rút hàng đợi vector mồ côi. */

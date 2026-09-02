@@ -139,6 +139,54 @@ expect "like lần hai vẫn 204 (idempotent)" 204 "$(code "$R")"
 R=$(req GET /api/tags "" "$TOKEN_A")
 expect "GET /api/tags trả 200" 200 "$(code "$R")"
 
+head_ "4b. Ý tưởng gốc, công thức prompt, danh mục hook và biến thể"
+ORIGIN='{"title":"Series review quán cà phê","hook":"Quán này không dành cho bạn",
+ "source_idea":"Ghi lại lúc 2 giờ sáng: đi review quán theo kiểu phim tài liệu",
+ "prompt_recipe":"máy quay lia chậm, ánh sáng cửa sổ, tông ấm",
+ "negative_prompt":"không chữ to, không nhạc trend",
+ "platform":"reels","niche":"ẩm thực","tags":["cà phê"],
+ "hooks":["Quán này không dành cho bạn","3 giây đầu quyết định tất cả"]}'
+R=$(req POST /api/ideas "$ORIGIN" "$TOKEN_A")
+expect "tạo ý tưởng gốc kèm ba trường mới trả 201" 201 "$(code "$R")"
+ORIGIN_ID=$(jqr "$(body "$R")" idea.id)
+expect "ý tưởng gốc được lưu nguyên văn" \
+  "Ghi lại lúc 2 giờ sáng: đi review quán theo kiểu phim tài liệu" \
+  "$(jqr "$(body "$R")" idea.source_idea)"
+expect "prompt công thức được lưu" "máy quay lia chậm, ánh sáng cửa sổ, tông ấm" \
+  "$(jqr "$(body "$R")" idea.prompt_recipe)"
+expect "negative prompt được lưu" "không chữ to, không nhạc trend" \
+  "$(jqr "$(body "$R")" idea.negative_prompt)"
+expect "danh mục hook giữ nguyên thứ tự" \
+  '["Quán này không dành cho bạn","3 giây đầu quyết định tất cả"]' \
+  "$(jqr "$(body "$R")" idea.hooks)"
+expect "ý tưởng mới mặc định là ý tưởng gốc" "origin" "$(jqr "$(body "$R")" idea.kind)"
+
+R=$(req POST "/api/ideas/$ORIGIN_ID/variants" '{"title":"Biến thể quay ban đêm"}' "$TOKEN_A")
+expect "tạo biến thể từ ý tưởng gốc trả 201" 201 "$(code "$R")"
+VARIANT_ID=$(jqr "$(body "$R")" idea.id)
+expect "biến thể có kind = variant" "variant" "$(jqr "$(body "$R")" idea.kind)"
+expect "biến thể trỏ về đúng ý tưởng gốc" "$ORIGIN_ID" "$(jqr "$(body "$R")" idea.parent_id)"
+expect "biến thể kế thừa prompt công thức của bản gốc" \
+  "máy quay lia chậm, ánh sáng cửa sổ, tông ấm" "$(jqr "$(body "$R")" idea.prompt_recipe)"
+
+R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_A")
+expect "GET danh mục biến thể trả 200" 200 "$(code "$R")"
+COUNT_V=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
+expect "danh mục biến thể có đúng một mục" 1 "$COUNT_V"
+
+# Cây đúng MỘT tầng: biến thể không đẻ tiếp biến thể.
+R=$(req POST "/api/ideas/$VARIANT_ID/variants" '{}' "$TOKEN_A")
+expect "tạo biến thể TỪ một biến thể bị từ chối" 400 "$(code "$R")"
+
+R=$(req GET "/api/ideas?kind=variant&limit=50" "" "$TOKEN_A")
+COUNT_KV=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
+expect "lọc kind=variant chỉ ra biến thể" 1 "$COUNT_KV"
+
+# Nút đồng bộ của riêng một ý tưởng.
+R=$(req POST "/api/ideas/$ORIGIN_ID/reindex" '{}' "$TOKEN_A")
+expect "POST /api/ideas/:id/reindex trả 200" 200 "$(code "$R")"
+echo "     outcome=$(jqr "$(body "$R")" outcome)"
+
 head_ "5. Cách ly giữa các tài khoản"
 TOKEN_B=$(register_token "{\"email\":\"$EMAIL_B\",\"password\":\"$PW\"}")
 if [ -n "$TOKEN_B" ]; then c_ok "đăng ký được tài khoản thứ hai"; else c_bad "không đăng ký được tài khoản thứ hai"; fi
@@ -151,6 +199,13 @@ for M in GET PATCH DELETE; do
 done
 R=$(req POST "/api/ideas/$IDEA_ID/like" "" "$TOKEN_B")
 expect "like ý tưởng của người khác trả 404" 404 "$(code "$R")"
+
+R=$(req POST "/api/ideas/$ORIGIN_ID/reindex" '{}' "$TOKEN_B")
+expect "đồng bộ ý tưởng của người khác trả 404" 404 "$(code "$R")"
+R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_B")
+expect "xem danh mục biến thể của người khác trả 404" 404 "$(code "$R")"
+R=$(req POST "/api/ideas/$ORIGIN_ID/variants" '{}' "$TOKEN_B")
+expect "tạo biến thể trên ý tưởng của người khác trả 404" 404 "$(code "$R")"
 
 R=$(req GET "/api/ideas?limit=50" "" "$TOKEN_B")
 COUNT_B=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
