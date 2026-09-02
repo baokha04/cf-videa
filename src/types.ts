@@ -80,6 +80,16 @@ export interface IdeaRow {
   updated_at: number;
 }
 
+/**
+ * Một mục trong danh mục video hook. Có `id` nên sửa và xoá được từng dòng riêng;
+ * `position` là thứ tự người dùng tự sắp (0 = hook đang ưng nhất).
+ */
+export interface HookRow {
+  id: string;
+  text: string;
+  position: number;
+}
+
 /** Ý tưởng trả về cho client — bỏ các cột nội bộ, thêm tag và trạng thái index. */
 export interface IdeaDto {
   id: string;

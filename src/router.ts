@@ -6,6 +6,7 @@ import { parseCookies, serializeCookie } from './http/cookies';
 import { cookieMaxAge, renewSession, resolveSession } from './auth/session';
 import * as auth from './routes/auth';
 import * as ideas from './routes/ideas';
+import * as hooks from './routes/hooks';
 import * as search from './routes/search';
 import * as recommend from './routes/recommend';
 import * as admin from './routes/admin';
@@ -84,6 +85,13 @@ app.get('/ideas/:id/similar', search.similar);
 app.get('/ideas/:id/variants', ideas.listVariants);
 app.post('/ideas/:id/variants', ideas.createVariant);
 app.post('/ideas/:id/reindex', ideas.reindexIdea);
+
+// Danh mục video hook — quản lý từng mục, mỗi mục có id riêng.
+app.get('/ideas/:id/hooks', hooks.listHooks);
+app.post('/ideas/:id/hooks', hooks.addHook);
+app.patch('/ideas/:id/hooks/:hookId', hooks.updateHook);
+app.delete('/ideas/:id/hooks/:hookId', hooks.removeHook);
+app.post('/ideas/:id/hooks/:hookId/move', hooks.moveHook);
 
 app.get('/search', search.search);
 app.get('/recommendations', recommend.recommendations);

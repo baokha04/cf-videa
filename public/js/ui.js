@@ -62,9 +62,9 @@ export const kindLabel = (k) => KIND_LABEL[k] ?? k;
 /**
  * Một thẻ ý tưởng. Trả về chuỗi HTML đã escape đầy đủ.
  *
- * `opts.sync` gắn thêm nút đồng bộ index của RIÊNG thẻ này. Mặc định tắt: thẻ còn
- * xuất hiện trong kết quả tìm kiếm và trong danh sách gợi ý, nơi một nút hành động
- * chỉ làm nhiễu.
+ * `opts.sync` gắn nút đồng bộ index của RIÊNG thẻ này; `opts.manage` gắn thêm nút
+ * Sửa và Xoá. Cả hai mặc định tắt: thẻ còn xuất hiện trong kết quả tìm kiếm và danh
+ * sách gợi ý, nơi những nút đó chỉ làm nhiễu.
  */
 export function ideaCard(idea, opts = {}) {
   const tags = idea.tags
@@ -93,14 +93,23 @@ export function ideaCard(idea, opts = {}) {
       : '';
   // data-indexed để nút biết mình đang là "đồng bộ" hay "đồng bộ lại" mà không phải
   // gọi lại API chỉ để hỏi một trạng thái đã nằm sẵn trong dữ liệu vừa render.
-  const sync = opts.sync
-    ? `<div class="idea-actions">
-         <button type="button" class="sync-one" data-id="${esc(idea.id)}"
-                 data-indexed="${idea.indexed ? '1' : '0'}">
-           ${idea.indexed ? 'Đồng bộ lại' : 'Đồng bộ index'}
-         </button>
-       </div>`
+  const syncBtn = opts.sync
+    ? `<button type="button" class="sync-one" data-id="${esc(idea.id)}"
+               data-indexed="${idea.indexed ? '1' : '0'}">
+         ${idea.indexed ? 'Đồng bộ lại' : 'Đồng bộ index'}
+       </button>`
     : '';
+  // Sửa là một liên kết mở thẳng trang ý tưởng, không phải sửa tại chỗ: một ý tưởng
+  // có cả chục trường, nên sửa tại chỗ chỉ vài trường là một lời hứa nửa vời.
+  const manageBtns = opts.manage
+    ? `<a class="btn-link" href="/idea?id=${encodeURIComponent(idea.id)}"><button type="button">Sửa</button></a>
+       <button type="button" class="delete-one danger" data-id="${esc(idea.id)}"
+               data-title="${esc(idea.title)}">Xoá</button>`
+    : '';
+  const actions =
+    syncBtn || manageBtns
+      ? `<div class="idea-actions">${manageBtns}${syncBtn}</div>`
+      : '';
 
   return `<article class="card idea">
     <h3><a href="/idea?id=${encodeURIComponent(idea.id)}">${esc(idea.title)}</a></h3>
@@ -111,7 +120,7 @@ export function ideaCard(idea, opts = {}) {
       ${idea.niche ? `<span class="chip">${esc(idea.niche)}</span>` : ''}
       ${kind}${variants}${hooks}${tags}${liked}${score}${pending}
     </div>
-    ${sync}
+    ${actions}
   </article>`;
 }
 

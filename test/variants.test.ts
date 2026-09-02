@@ -3,9 +3,11 @@ import { fakeVectorize, migrate, testEnv } from './helpers';
 import { hashPassword } from '../src/auth/password';
 import * as usersDb from '../src/db/users';
 import * as ideasDb from '../src/db/ideas';
+import * as hooksDb from '../src/db/hooks';
 import { hooksForIdeas, setIdeaHooks } from '../src/db/hooks';
 import { metaSignature } from '../src/vec/index';
-import { syncIdea } from '../src/vec/sync';
+import { rehashIdea, syncIdea } from '../src/vec/sync';
+import { buildEmbedText, contentHash } from '../src/vec/embeddings';
 import type { Env } from '../src/types';
 
 const BASE = {
@@ -280,5 +282,161 @@ describe('nút đồng bộ index của riêng từng ý tưởng', () => {
     expect(row?.title).toBe(BASE.title);
     expect(row?.embed_attempts).toBe(1);
     expect(await ideasDb.countDirty(env, uid)).toBe(1);
+  });
+});
+
+describe('quản lý danh mục video hook', () => {
+  let A: string;
+  let B: string;
+  let ideaId: string;
+
+  beforeEach(async () => {
+    await migrate();
+    await testEnv().DB.prepare('DELETE FROM users').run();
+    A = (await mkUser('a@example.com')).id;
+    B = (await mkUser('b@example.com')).id;
+    ideaId = (await ideasDb.create(testEnv(), A, BASE, 'h1')).id;
+  });
+
+  const texts = async (uid = A, iid = ideaId) =>
+    (await hooksDb.listHooks(testEnv(), uid, iid)).map((h) => h.text);
+
+  it('thêm hook nối vào cuối danh mục, không chen ngang', async () => {
+    for (const t of ['hook 1', 'hook 2', 'hook 3']) {
+      expect(await hooksDb.addHook(testEnv(), A, ideaId, t)).not.toBeNull();
+    }
+    expect(await texts()).toEqual(['hook 1', 'hook 2', 'hook 3']);
+    // position phải tăng dần chứ không cùng bằng 0 — nếu tính ở tầng ứng dụng thay
+    // vì trong câu lệnh thì hai lần thêm liên tiếp sẽ nhận cùng một số.
+    expect((await hooksDb.listHooks(testEnv(), A, ideaId)).map((h) => h.position))
+      .toEqual([0, 1, 2]);
+  });
+
+  it('sửa đúng một dòng, không đụng các dòng còn lại', async () => {
+    const a = await hooksDb.addHook(testEnv(), A, ideaId, 'hook 1');
+    await hooksDb.addHook(testEnv(), A, ideaId, 'hook 2');
+    expect(await hooksDb.updateHook(testEnv(), A, ideaId, a!.id, 'hook 1 đã sửa')).toBe(true);
+    expect(await texts()).toEqual(['hook 1 đã sửa', 'hook 2']);
+  });
+
+  it('xoá một dòng không làm hỏng thứ tự các dòng còn lại', async () => {
+    await hooksDb.addHook(testEnv(), A, ideaId, 'hook 1');
+    const b = await hooksDb.addHook(testEnv(), A, ideaId, 'hook 2');
+    await hooksDb.addHook(testEnv(), A, ideaId, 'hook 3');
+    expect(await hooksDb.removeHook(testEnv(), A, ideaId, b!.id)).toBe(true);
+    expect(await texts()).toEqual(['hook 1', 'hook 3']);
+  });
+
+  it('đổi thứ tự lên/xuống, và dừng đúng ở hai đầu danh mục', async () => {
+    const a = await hooksDb.addHook(testEnv(), A, ideaId, 'hook 1');
+    const b = await hooksDb.addHook(testEnv(), A, ideaId, 'hook 2');
+    const c = await hooksDb.addHook(testEnv(), A, ideaId, 'hook 3');
+
+    expect(await hooksDb.moveHook(testEnv(), A, ideaId, c!.id, 'up')).toBe(true);
+    expect(await texts()).toEqual(['hook 1', 'hook 3', 'hook 2']);
+    expect(await hooksDb.moveHook(testEnv(), A, ideaId, a!.id, 'down')).toBe(true);
+    expect(await texts()).toEqual(['hook 3', 'hook 1', 'hook 2']);
+
+    // Đã ở đầu/cuối thì báo false chứ không im lặng làm hỏng thứ tự.
+    expect(await hooksDb.moveHook(testEnv(), A, ideaId, c!.id, 'up')).toBe(false);
+    expect(await hooksDb.moveHook(testEnv(), A, ideaId, b!.id, 'down')).toBe(false);
+    expect(await texts()).toEqual(['hook 3', 'hook 1', 'hook 2']);
+  });
+
+  it('đổi thứ tự chuẩn hoá luôn position bị trùng do dữ liệu cũ để lại', async () => {
+    // setIdeaHooks cũ và các đường ghi khác có thể để lại position trùng nhau. Nếu
+    // moveHook chỉ hoán đổi hai hàng thì hai hàng cùng position sẽ kẹt vĩnh viễn.
+    await hooksDb.addHook(testEnv(), A, ideaId, 'x');
+    await hooksDb.addHook(testEnv(), A, ideaId, 'y');
+    const z = await hooksDb.addHook(testEnv(), A, ideaId, 'z');
+    await testEnv().DB.prepare('UPDATE idea_hooks SET position = 0').run();
+
+    expect(await hooksDb.moveHook(testEnv(), A, ideaId, z!.id, 'up')).toBe(true);
+    expect((await hooksDb.listHooks(testEnv(), A, ideaId)).map((h) => h.position))
+      .toEqual([0, 1, 2]);
+  });
+
+  it('B không thêm, sửa, xoá hay đổi thứ tự hook trên ý tưởng của A', async () => {
+    const a = await hooksDb.addHook(testEnv(), A, ideaId, 'hook của A');
+    await hooksDb.addHook(testEnv(), A, ideaId, 'hook thứ hai của A');
+
+    expect(await hooksDb.addHook(testEnv(), B, ideaId, 'chiếm chỗ')).toBeNull();
+    expect(await hooksDb.updateHook(testEnv(), B, ideaId, a!.id, 'bị sửa trộm')).toBe(false);
+    expect(await hooksDb.removeHook(testEnv(), B, ideaId, a!.id)).toBe(false);
+    expect(await hooksDb.moveHook(testEnv(), B, ideaId, a!.id, 'down')).toBe(false);
+
+    expect(await texts()).toEqual(['hook của A', 'hook thứ hai của A']);
+    expect(await texts(B)).toEqual([]);
+  });
+
+  it('MỌI thay đổi hook đều làm ý tưởng bẩn trở lại', async () => {
+    // Đây là bất biến dễ vỡ nhất của tính năng này: hook nằm trong văn bản đem đi
+    // nhúng nhưng ở bảng khác, nên không cột nào của `ideas` nhúc nhích khi hook
+    // đổi. Quên rehash là vector mốc lại vĩnh viễn mà không có dấu hiệu gì.
+    const clean = async () => {
+      await ideasDb.markEmbedded(
+        testEnv(),
+        ideaId,
+        (await ideasDb.getById(testEnv(), A, ideaId))!.content_hash,
+        'model-gia',
+      );
+      expect(await ideasDb.countDirty(testEnv(), A)).toBe(0);
+    };
+
+    await rehashIdea(testEnv(), A, ideaId);
+    await clean();
+
+    const h = await hooksDb.addHook(testEnv(), A, ideaId, 'hook mới');
+    await rehashIdea(testEnv(), A, ideaId);
+    expect(await ideasDb.countDirty(testEnv(), A), 'thêm hook').toBe(1);
+    await clean();
+
+    await hooksDb.updateHook(testEnv(), A, ideaId, h!.id, 'hook đã sửa');
+    await rehashIdea(testEnv(), A, ideaId);
+    expect(await ideasDb.countDirty(testEnv(), A), 'sửa hook').toBe(1);
+    await clean();
+
+    await hooksDb.addHook(testEnv(), A, ideaId, 'hook thứ hai');
+    await rehashIdea(testEnv(), A, ideaId);
+    await clean();
+    await hooksDb.moveHook(testEnv(), A, ideaId, h!.id, 'down');
+    await rehashIdea(testEnv(), A, ideaId);
+    expect(await ideasDb.countDirty(testEnv(), A), 'đổi thứ tự hook').toBe(1);
+    await clean();
+
+    await hooksDb.removeHook(testEnv(), A, ideaId, h!.id);
+    await rehashIdea(testEnv(), A, ideaId);
+    expect(await ideasDb.countDirty(testEnv(), A), 'xoá hook').toBe(1);
+  });
+
+  it('hash mà rehashIdea ghi ra khớp đúng hash lúc đối soát', async () => {
+    // Hai đường phải dùng chung buildEmbedText. Lệch nhau thì hàng bẩn vĩnh viễn:
+    // đồng bộ xong lại thành bẩn ngay, và nút đồng bộ không bao giờ tắt được.
+    await hooksDb.addHook(testEnv(), A, ideaId, 'hook 1');
+    await hooksDb.addHook(testEnv(), A, ideaId, 'hook 2');
+    await rehashIdea(testEnv(), A, ideaId);
+
+    const row = (await ideasDb.getById(testEnv(), A, ideaId))!;
+    const expected = await contentHash(buildEmbedText(row, [], ['hook 1', 'hook 2']));
+    expect(row.content_hash).toBe(expected);
+  });
+
+  it('xoá ý tưởng thì danh mục hook của nó đi theo', async () => {
+    await hooksDb.addHook(testEnv(), A, ideaId, 'hook 1');
+    await ideasDb.remove(testEnv(), A, ideaId);
+    const n = await testEnv().DB.prepare('SELECT COUNT(*) AS n FROM idea_hooks')
+      .first<{ n: number }>();
+    expect(n?.n).toBe(0);
+  });
+
+  it('xoá ý tưởng gốc thì hook của các biến thể cũng đi theo', async () => {
+    const v = await ideasDb.create(
+      testEnv(), A, { ...BASE, kind: 'variant', parent_id: ideaId }, 'h2',
+    );
+    await hooksDb.addHook(testEnv(), A, v.id, 'hook của biến thể');
+    await ideasDb.remove(testEnv(), A, ideaId);
+    const n = await testEnv().DB.prepare('SELECT COUNT(*) AS n FROM idea_hooks')
+      .first<{ n: number }>();
+    expect(n?.n).toBe(0);
   });
 });

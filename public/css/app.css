@@ -322,8 +322,49 @@ button.link {
   justify-content: flex-end;
   margin-top: 12px;
 }
+.idea-actions { gap: 8px; flex-wrap: wrap; }
 .idea-actions button { font-size: 14px; padding: 0 14px; }
+/* Cùng thủ thuật với .actions > a: để thẻ <a> tàng hình đi thì <button> bên trong
+   nhận thẳng layout của flex container, không thành một hộp lồng. */
+.idea-actions > a.btn-link { display: contents; }
 @media (max-width: 560px) { .idea-actions button { flex: 1 1 100%; } }
+
+/* --- Danh mục video hook -------------------------------------------------- */
+/* Mỗi dòng là một hook sửa/xoá/sắp xếp được riêng. Số thứ tự có mặt vì thứ tự ở đây
+   MANG NGHĨA: dòng 1 là hook đang ưng nhất. */
+.hook-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.hook-row:last-child { border-bottom: 0; }
+.hook-no {
+  flex: 0 0 auto;
+  min-width: 22px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.hook-row .hook-text { flex: 1 1 200px; min-width: 0; margin: 0; }
+.hook-row .hook-text:disabled { opacity: .6; }
+.hook-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+/* Nút mũi tên vuông và hẹp, nhưng vẫn giữ đủ 44px chiều cao vùng chạm của iOS. */
+.hook-actions button { font-size: 14px; padding: 0 12px; min-width: var(--tap); }
+.hook-actions button[disabled] { opacity: .4; }
+.hook-add-row { margin-top: 14px; align-items: flex-end; }
+/* Màn hẹp: số thứ tự PHẢI ở cùng dòng với ô nhập của chính nó, chỉ đám nút mới
+   xuống dòng. Cho ô nhập xuống dòng riêng (order: -1) làm con số trôi xuống giữa
+   hai hook và trông như đang đánh số cho hook bên dưới. */
+@media (max-width: 560px) {
+  .hook-row { align-items: baseline; }
+  .hook-row .hook-text { flex: 1 1 120px; }
+  .hook-actions { flex: 1 1 100%; margin-left: 30px; }
+  .hook-actions button { flex: 1 1 0; min-width: 0; }
+}
 
 /* Dòng "biến thể của …" ngay dưới tiêu đề trang ý tưởng. */
 .parent-of {

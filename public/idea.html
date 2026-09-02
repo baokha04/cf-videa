@@ -72,11 +72,6 @@
         <span class="muted small">(thứ KHÔNG được xuất hiện)</span></label>
       <textarea id="negative_prompt" maxlength="2000" rows="3"></textarea>
 
-      <label for="hooks">Danh mục video hook
-        <span class="muted small">(mỗi dòng một hook, dòng đầu là hook bạn đang ưng nhất)</span></label>
-      <textarea id="hooks" rows="4"
-                placeholder="Bạn đã bao giờ…&#10;3 giây đầu quyết định tất cả&#10;Đừng làm điều này khi quay"></textarea>
-
       <div class="actions">
         <button class="primary" type="submit" id="save">Lưu</button>
         <button type="button" id="sync" hidden>Đồng bộ index</button>
@@ -87,6 +82,31 @@
     </form>
     <p id="msg" class="msg"></p>
   </div>
+
+  <!-- Danh mục video hook. Mỗi mục có id riêng nên sửa và xoá được từng dòng, khác
+       hẳn một ô nhiều dòng vốn ghi đè cả danh mục mỗi lần lưu. Chỉ hiện khi ý tưởng
+       đã tồn tại — chưa có id thì chưa có gì để gắn hook vào. -->
+  <section id="hooks-wrap" hidden>
+    <h2>Danh mục video hook</h2>
+    <p class="sub" id="hooks-sub">Các cách mở đầu đã nghĩ ra cho ý tưởng này.</p>
+    <div class="card">
+      <div id="hook-list"></div>
+      <div class="row hook-add-row">
+        <div>
+          <label for="hook-new">Thêm hook</label>
+          <input id="hook-new" maxlength="500" placeholder="Bạn đã bao giờ…">
+        </div>
+        <div class="shrink">
+          <label>&nbsp;</label>
+          <button type="button" id="hook-add">Thêm</button>
+        </div>
+      </div>
+      <p class="small muted spaced">
+        Sửa xong một dòng thì bấm ra ngoài là tự lưu. Dòng trên cùng là hook bạn đang
+        ưng nhất — dùng ↑ ↓ để sắp lại.
+      </p>
+    </div>
+  </section>
 
   <!-- Danh mục ý tưởng biến thể. Chỉ ý tưởng gốc mới có; một biến thể không đẻ
        tiếp biến thể (cây đúng một tầng). -->
