@@ -52,8 +52,21 @@ export function fmtDate(ms) {
   });
 }
 
-/** Một thẻ ý tưởng. Trả về chuỗi HTML đã escape đầy đủ. */
-export function ideaCard(idea) {
+const KIND_LABEL = {
+  origin: 'Ý tưởng gốc',
+  variant: 'Biến thể',
+};
+
+export const kindLabel = (k) => KIND_LABEL[k] ?? k;
+
+/**
+ * Một thẻ ý tưởng. Trả về chuỗi HTML đã escape đầy đủ.
+ *
+ * `opts.sync` gắn thêm nút đồng bộ index của RIÊNG thẻ này. Mặc định tắt: thẻ còn
+ * xuất hiện trong kết quả tìm kiếm và trong danh sách gợi ý, nơi một nút hành động
+ * chỉ làm nhiễu.
+ */
+export function ideaCard(idea, opts = {}) {
   const tags = idea.tags
     .map((t) => `<span class="chip">#${esc(t)}</span>`)
     .join('');
@@ -66,6 +79,28 @@ export function ideaCard(idea) {
     ? ''
     : '<span class="chip pending" title="Chưa nằm trong tìm kiếm ngữ nghĩa">chưa index</span>';
   const liked = idea.liked ? '<span class="chip">♥ đã thích</span>' : '';
+  // Chỉ dán nhãn cho biến thể. Ý tưởng gốc là mặc định, dán nhãn cho cả hai chỉ làm
+  // mọi thẻ dài ra mà không thêm thông tin nào.
+  const kind =
+    idea.kind === 'variant' ? '<span class="chip variant">biến thể</span>' : '';
+  const variants =
+    idea.variant_count > 0
+      ? `<span class="chip">${idea.variant_count} biến thể</span>`
+      : '';
+  const hooks =
+    idea.hooks && idea.hooks.length > 0
+      ? `<span class="chip">${idea.hooks.length} hook</span>`
+      : '';
+  // data-indexed để nút biết mình đang là "đồng bộ" hay "đồng bộ lại" mà không phải
+  // gọi lại API chỉ để hỏi một trạng thái đã nằm sẵn trong dữ liệu vừa render.
+  const sync = opts.sync
+    ? `<div class="idea-actions">
+         <button type="button" class="sync-one" data-id="${esc(idea.id)}"
+                 data-indexed="${idea.indexed ? '1' : '0'}">
+           ${idea.indexed ? 'Đồng bộ lại' : 'Đồng bộ index'}
+         </button>
+       </div>`
+    : '';
 
   return `<article class="card idea">
     <h3><a href="/idea?id=${encodeURIComponent(idea.id)}">${esc(idea.title)}</a></h3>
@@ -74,15 +109,16 @@ export function ideaCard(idea) {
       <span class="chip">${esc(platformLabel(idea.platform))}</span>
       <span class="chip">${esc(statusLabel(idea.status))}</span>
       ${idea.niche ? `<span class="chip">${esc(idea.niche)}</span>` : ''}
-      ${tags}${liked}${score}${pending}
+      ${kind}${variants}${hooks}${tags}${liked}${score}${pending}
     </div>
+    ${sync}
   </article>`;
 }
 
-export function renderList(container, items, emptyText) {
+export function renderList(container, items, emptyText, opts = {}) {
   if (!items || items.length === 0) {
     container.innerHTML = `<p class="empty">${esc(emptyText)}</p>`;
     return;
   }
-  container.innerHTML = items.map(ideaCard).join('');
+  container.innerHTML = items.map((idea) => ideaCard(idea, opts)).join('');
 }

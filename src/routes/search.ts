@@ -7,7 +7,14 @@ import { embedOne } from '../vec/embeddings';
 import { getVectors, queryIdeas } from '../vec/index';
 import { hydrate } from './ideas';
 import { clampLimit, normText, oneOf } from '../util/validate';
-import { IDEA_STATUSES, PLATFORMS, type IdeaStatus, type Platform } from '../types';
+import {
+  IDEA_KINDS,
+  IDEA_STATUSES,
+  PLATFORMS,
+  type IdeaKind,
+  type IdeaStatus,
+  type Platform,
+} from '../types';
 
 const MAX_QUERY_CHARS = 512;
 
@@ -32,6 +39,7 @@ export async function search(c: Ctx): Promise<Response> {
   const limit = clampLimit(c.req.query('limit') ?? null);
   const statusQ = c.req.query('status');
   const platformQ = c.req.query('platform');
+  const kindQ = c.req.query('kind');
 
   let matches;
   try {
@@ -41,11 +49,18 @@ export async function search(c: Ctx): Promise<Response> {
       topK: Math.min(limit * 2, 100),
       ...(statusQ ? { status: [oneOf<IdeaStatus>(statusQ, IDEA_STATUSES, 'status')] } : {}),
       ...(platformQ ? { platform: oneOf<Platform>(platformQ, PLATFORMS, 'platform') } : {}),
+      ...(kindQ ? { kind: oneOf<IdeaKind>(kindQ, IDEA_KINDS, 'kind') } : {}),
     });
   } catch (err) {
     // Workers AI hoặc Vectorize hỏng thì vẫn phải tìm được — lùi về LIKE trên D1.
     console.error('semantic search failed, falling back to keyword', err);
-    const { rows } = await ideasDb.list(c.env, user.id, { q }, limit, null);
+    const { rows } = await ideasDb.list(
+      c.env,
+      user.id,
+      { q, ...(kindQ ? { kind: oneOf<IdeaKind>(kindQ, IDEA_KINDS, 'kind') } : {}) },
+      limit,
+      null,
+    );
     return c.json({ items: await hydrate(c, user.id, rows), mode: 'fallback' });
   }
 

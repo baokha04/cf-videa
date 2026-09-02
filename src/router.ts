@@ -81,6 +81,9 @@ app.delete('/ideas/:id', ideas.deleteIdea);
 app.post('/ideas/:id/like', ideas.likeIdea);
 app.delete('/ideas/:id/like', ideas.unlikeIdea);
 app.get('/ideas/:id/similar', search.similar);
+app.get('/ideas/:id/variants', ideas.listVariants);
+app.post('/ideas/:id/variants', ideas.createVariant);
+app.post('/ideas/:id/reindex', ideas.reindexIdea);
 
 app.get('/search', search.search);
 app.get('/recommendations', recommend.recommendations);

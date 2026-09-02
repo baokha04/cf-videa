@@ -18,20 +18,26 @@ export interface IdeaVectorMeta extends Record<string, VectorizeVectorMetadataVa
   status: string;
   platform: string;
   visibility: string;
+  /** 'origin' | 'variant' — cho phép tìm ngữ nghĩa chỉ trong kho ý tưởng gốc. */
+  kind: string;
   updated_at: number;
 }
 
 /**
  * Chữ ký metadata của một ý tưởng.
  *
- * Phải khớp CHÍNH XÁC biểu thức trong SQL ở migrations/0004 và src/db/ideas.ts:
- *   status || '|' || platform || '|' || visibility
+ * Phải khớp CHÍNH XÁC biểu thức META_SIG_SQL trong src/db/ideas.ts và mệnh đề WHERE
+ * của idx_ideas_dirty ở migrations/0005:
+ *   status || '|' || platform || '|' || visibility || '|' || kind
  * Lệch nhau thì hàng sẽ hoặc bẩn vĩnh viễn, hoặc không bao giờ được đồng bộ lại.
+ *
+ * `kind` có mặt ở đây vì nó nằm trong metadata của vector nhưng KHÔNG nằm trong văn
+ * bản đem đi nhúng — y hệt cái bẫy mà `status` đã dựng ra ở migrations/0004.
  */
 export function metaSignature(
-  idea: Pick<IdeaRow, 'status' | 'platform' | 'visibility'>,
+  idea: Pick<IdeaRow, 'status' | 'platform' | 'visibility' | 'kind'>,
 ): string {
-  return `${idea.status}|${idea.platform}|${idea.visibility}`;
+  return `${idea.status}|${idea.platform}|${idea.visibility}|${idea.kind}`;
 }
 
 export function metaFor(idea: IdeaRow): IdeaVectorMeta {
@@ -40,6 +46,7 @@ export function metaFor(idea: IdeaRow): IdeaVectorMeta {
     status: idea.status,
     platform: idea.platform,
     visibility: idea.visibility,
+    kind: idea.kind,
     updated_at: idea.updated_at,
   };
 }
@@ -83,6 +90,7 @@ export interface QueryOpts {
   topK: number;
   status?: string[];
   platform?: string;
+  kind?: string;
 }
 
 export interface Match {
@@ -105,6 +113,7 @@ export async function queryIdeas(
     filter['status'] = opts.status.length === 1 ? { $eq: opts.status[0] } : { $in: opts.status };
   }
   if (opts.platform) filter['platform'] = { $eq: opts.platform };
+  if (opts.kind) filter['kind'] = { $eq: opts.kind };
 
   const res = await env.VEC.query(vector, {
     topK: Math.min(opts.topK, 100),
