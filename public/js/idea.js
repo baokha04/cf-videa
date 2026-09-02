@@ -90,9 +90,43 @@ function fill(idea) {
   } else {
     parentOf.hidden = true;
   }
-  $('#variants-wrap').hidden = idea.kind !== 'origin';
-  if (idea.kind === 'origin') void loadVariants();
+  applyVariantSection(idea.kind);
   void loadHooks();
+}
+
+/**
+ * Mục "Ý tưởng biến thể" có ba trạng thái, và KHÔNG trạng thái nào được phép ẩn nó
+ * đi trong im lặng.
+ *
+ * Bản trước ẩn hẳn mục này khi ý tưởng chưa lưu hoặc khi đang mở một biến thể, nên
+ * người dùng không tìm thấy chỗ thêm mới và cũng không có gì nói cho họ biết vì sao.
+ * Ẩn một tính năng là cách tệ nhất để nói "chưa dùng được ở đây": nút mờ đi kèm một
+ * câu giải thích thì vẫn dạy được người ta cách dùng, còn khoảng trắng thì không.
+ */
+function applyVariantSection(kindNow) {
+  $('#variants-wrap').hidden = false;
+
+  if (isNew) {
+    // Không thể đệm tạm như danh mục hook: một biến thể là một hàng ideas thật và
+    // nó cần một ý tưởng gốc có id để trỏ vào.
+    $('#variants-sub').textContent =
+      'Lưu ý tưởng này trước đã — biến thể phải mọc ra từ một ý tưởng gốc đã có thật.';
+    variantBtn.disabled = true;
+    $('#variants').innerHTML = '';
+    return;
+  }
+
+  if (kindNow === 'variant') {
+    $('#variants-sub').textContent =
+      'Đây đã là một biến thể, và biến thể không đẻ tiếp biến thể. Mở ý tưởng gốc ở '
+      + 'đầu trang để tạo thêm bản mới.';
+    variantBtn.disabled = true;
+    $('#variants').innerHTML = '';
+    return;
+  }
+
+  variantBtn.disabled = false;
+  void loadVariants();
 }
 
 /**
@@ -395,6 +429,7 @@ async function loadSimilar() {
 // đoán ra rằng nó tồn tại.
 $('#hooks-wrap').hidden = false;
 renderHooks(pendingHooks);
+applyVariantSection('origin');
 
 if (!isNew) {
   try {
