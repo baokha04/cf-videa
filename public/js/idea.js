@@ -4,6 +4,15 @@ import { mountNav } from './nav.js';
 
 await mountNav('/app');
 
+// Ba thông báo, gom lại một chỗ để chúng không lệch nhau khi sửa.
+const SAVED_MSG =
+  'Đã lưu vào cơ sở dữ liệu. Ý tưởng chưa nằm trong tìm kiếm ngữ nghĩa — '
+  + 'bấm "Đồng bộ index" ở trang kho ý tưởng khi bạn viết xong.';
+const SAVED_INDEXED_MSG = 'Đã lưu. Ý tưởng vẫn đang khớp với tìm kiếm ngữ nghĩa.';
+const CREATED_MSG =
+  'Đã tạo ý tưởng và lưu vào cơ sở dữ liệu. Nhớ bấm "Đồng bộ index" ở trang kho ý '
+  + 'tưởng để nó xuất hiện trong tìm kiếm ngữ nghĩa.';
+
 const id = new URLSearchParams(location.search).get('id');
 const isNew = !id;
 const msg = $('#msg');
@@ -43,7 +52,7 @@ function fill(idea) {
   $('#heading').textContent = idea.title;
   $('#sub').textContent = idea.indexed
     ? 'Đã nằm trong tìm kiếm ngữ nghĩa.'
-    : 'Chưa index — chưa tìm được bằng tìm kiếm ngữ nghĩa.';
+    : 'Chưa index — bấm "Đồng bộ index" ở trang kho ý tưởng khi bạn viết xong.';
 }
 
 async function loadSimilar() {
@@ -65,14 +74,7 @@ if (!isNew) {
     // bản ghi, chứ không phải giả định lạc quan — ý tưởng chưa index sẽ không
     // xuất hiện trong tìm kiếm ngữ nghĩa, và người dùng cần biết ngay.
     if (new URLSearchParams(location.search).get('created') === '1') {
-      show(
-        msg,
-        idea.indexed
-          ? 'Đã tạo ý tưởng. Tìm kiếm ngữ nghĩa sẽ thấy nó sau khoảng một phút.'
-          : 'Đã tạo ý tưởng, nhưng chưa index được nên tìm kiếm ngữ nghĩa chưa thấy. '
-            + 'Dùng nút "Đồng bộ lại index" ở trang kho ý tưởng.',
-        idea.indexed ? 'ok' : 'note',
-      );
+      show(msg, CREATED_MSG, 'ok');
     }
     void loadSimilar();
   } catch (err) {
@@ -99,16 +101,9 @@ $('#f').addEventListener('submit', async (e) => {
       return;
     }
     fill(res.idea);
-    // Upsert lên Vectorize là bất đồng bộ. Số đo thật trên production: vector vừa
-    // ghi mất KHOẢNG 60–70 GIÂY mới truy vấn được — không phải vài giây. Nói đúng
-    // con số, nếu không người dùng sẽ tưởng tìm kiếm bị hỏng.
-    show(
-      msg,
-      res.indexed
-        ? 'Đã lưu. Tìm kiếm ngữ nghĩa sẽ thấy ý tưởng này sau khoảng một phút.'
-        : 'Đã lưu, nhưng chưa index được. Thử nút "Đồng bộ lại index" ở trang kho ý tưởng.',
-      res.indexed ? 'ok' : 'note',
-    );
+    // Lưu ý tưởng cố ý CHỈ ghi D1 — không nhúng, không đụng Vectorize. Nói đúng
+    // điều đó thay vì để người dùng tưởng tìm kiếm ngữ nghĩa đã cập nhật theo.
+    show(msg, res.indexed ? SAVED_INDEXED_MSG : SAVED_MSG, res.indexed ? 'ok' : 'note');
   } catch (err) {
     show(msg, err.message);
   } finally {

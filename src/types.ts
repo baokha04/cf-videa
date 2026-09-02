@@ -23,6 +23,8 @@ export interface SessionInfo {
   id: string;
   expires_at: number;
   absolute_exp: number;
+  /** Người dùng chọn "ghi nhớ đăng nhập" → phiên dài + cookie sống qua lần đóng trình duyệt. */
+  remember: boolean;
 }
 
 /** Biến đặt vào context của Hono bởi middleware xác thực. */
@@ -53,6 +55,8 @@ export interface IdeaRow {
   lang: string;
   content_hash: string;
   embedded_hash: string | null;
+  /** Chữ ký metadata tại lần upsert gần nhất — xem migrations/0004. */
+  indexed_meta_hash: string | null;
   embedding_model: string | null;
   embedded_at: number | null;
   embed_attempts: number;
@@ -72,6 +76,7 @@ export interface IdeaDto {
   visibility: Visibility;
   tags: string[];
   liked: boolean;
+  /** Vector trên Vectorize đã khớp với hàng D1 này chưa. */
   indexed: boolean;
   created_at: number;
   updated_at: number;

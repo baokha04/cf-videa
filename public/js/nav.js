@@ -1,5 +1,6 @@
 import { get } from './api.js';
 import { esc } from './ui.js';
+import { mountThemeToggle } from './theme.js';
 
 /**
  * Thanh điều hướng dùng chung. Gọi ở mọi trang cần đăng nhập; trả về đối tượng
@@ -27,6 +28,8 @@ export async function mountNav(current) {
       )
       .join('')}</nav>
     <span class="who">${esc(user.display_name || user.email)}</span>`;
+  // Nút giao diện gắn sau khi dựng innerHTML, nếu không nó bị ghi đè mất.
+  mountThemeToggle(header);
   document.body.prepend(header);
   return user;
 }

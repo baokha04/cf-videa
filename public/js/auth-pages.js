@@ -1,9 +1,14 @@
 import { post } from './api.js';
 import { $, show } from './ui.js';
+import { mountThemeToggle } from './theme.js';
 
 // Một file phục vụ cả login.html lẫn register.html — hai form giống nhau tới mức
 // tách ra thành hai file chỉ tạo thêm chỗ để chúng lệch nhau.
 const isRegister = location.pathname.startsWith('/register');
+
+// Trang đăng nhập/đăng ký không có thanh điều hướng, nên nút giao diện gắn riêng.
+const themeBar = $('#themebar');
+if (themeBar) mountThemeToggle(themeBar);
 const form = $('#f');
 const msg = $('#msg');
 const submit = $('#submit');
@@ -25,6 +30,9 @@ form.addEventListener('submit', async (e) => {
   const body = {
     email: $('#email').value.trim(),
     password: $('#password').value,
+    // Gửi tường minh cả khi không tích: server phân biệt "không chọn" với "không gửi",
+    // và với đăng ký thì "không gửi" mặc định là có ghi nhớ.
+    remember: $('#remember')?.checked === true,
   };
   if (isRegister) {
     const dn = $('#display_name').value.trim();

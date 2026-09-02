@@ -3,7 +3,7 @@ import type { Env, Variables } from './types';
 import { checkOrigin } from './http/guard';
 import { errorResponse } from './http/response';
 import { parseCookies, serializeCookie } from './http/cookies';
-import { COOKIE_MAX_AGE_SEC, renewSession, resolveSession } from './auth/session';
+import { cookieMaxAge, renewSession, resolveSession } from './auth/session';
 import * as auth from './routes/auth';
 import * as ideas from './routes/ideas';
 import * as search from './routes/search';
@@ -46,9 +46,13 @@ app.use('*', async (c, next) => {
         c.executionCtx.waitUntil(
           renewSession(c.env, resolved.session).then(() => undefined),
         );
+        // Phát lại cookie đúng kiểu của phiên: có Max-Age nếu người dùng chọn ghi
+        // nhớ, còn không thì là cookie phiên.
         c.header(
           'Set-Cookie',
-          serializeCookie(c.env.COOKIE_NAME, token, { maxAge: COOKIE_MAX_AGE_SEC }),
+          serializeCookie(c.env.COOKIE_NAME, token, {
+            maxAge: cookieMaxAge(resolved.session.remember),
+          }),
         );
       }
     }
@@ -81,6 +85,7 @@ app.get('/ideas/:id/similar', search.similar);
 app.get('/search', search.search);
 app.get('/recommendations', recommend.recommendations);
 app.get('/tags', ideas.listTagsRoute);
+app.get('/sync', admin.syncStatus);
 app.post('/reindex', admin.reindexMine);
 
 app.post('/admin/reindex', admin.reindexAdmin);

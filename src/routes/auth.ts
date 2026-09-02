@@ -5,7 +5,7 @@ import { clearCookie, serializeCookie } from '../http/cookies';
 import * as usersDb from '../db/users';
 import { dummyHash, hashPassword, verifyPassword } from '../auth/password';
 import {
-  COOKIE_MAX_AGE_SEC,
+  cookieMaxAge,
   createSession,
   revokeAllSessions,
   recordMaintenanceRun,
@@ -28,10 +28,16 @@ function userDto(u: { id: string; email: string; display_name: string | null }):
   return { id: u.id, email: u.email, display_name: u.display_name };
 }
 
-function setSessionCookie(c: Ctx, token: string): void {
-  c.header('Set-Cookie', serializeCookie(c.env.COOKIE_NAME, token, {
-    maxAge: COOKIE_MAX_AGE_SEC,
-  }));
+function setSessionCookie(c: Ctx, token: string, remember: boolean): void {
+  c.header(
+    'Set-Cookie',
+    serializeCookie(c.env.COOKIE_NAME, token, { maxAge: cookieMaxAge(remember) }),
+  );
+}
+
+/** Chỉ đúng `true` mới bật ghi nhớ — mọi giá trị lạ đều coi là không. */
+function wantsRemember(body: Record<string, unknown>): boolean {
+  return body['remember'] === true;
 }
 
 export async function register(c: Ctx): Promise<Response> {
@@ -52,11 +58,15 @@ export async function register(c: Ctx): Promise<Response> {
     throw badRequest('invalid_credentials', GENERIC_AUTH_ERROR);
   }
 
+  // Đăng ký mặc định ghi nhớ: người vừa tự tạo tài khoản gần như luôn ở máy riêng,
+  // và bắt họ đăng nhập lại ngay sau khi đăng ký là vô lý.
+  const remember = body['remember'] === undefined ? true : wantsRemember(body);
   const { token } = await createSession(c.env, user.id, {
     ip,
     userAgent: c.req.header('User-Agent'),
+    remember,
   });
-  setSessionCookie(c, token);
+  setSessionCookie(c, token, remember);
   return c.json({ user: userDto(user) }, 201);
 }
 
@@ -103,11 +113,13 @@ export async function login(c: Ctx): Promise<Response> {
   }
 
   await reset(c.env, [ipBucket, emailBucket]);
+  const remember = wantsRemember(body);
   const { token } = await createSession(c.env, user.id, {
     ip,
     userAgent: c.req.header('User-Agent'),
+    remember,
   });
-  setSessionCookie(c, token);
+  setSessionCookie(c, token, remember);
 
   // Pages Functions không có cron trigger, và dự án cố ý KHÔNG dựng Worker riêng chỉ
   // để có lịch. Thay vào đó, việc dọn dẹp bám theo chính lưu lượng: khoảng 5% số lần
@@ -152,7 +164,10 @@ export async function logout(c: Ctx): Promise<Response> {
 export async function me(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const session = requireSession(c);
-  return c.json({ user, session: { expires_at: session.expires_at } });
+  return c.json({
+    user,
+    session: { expires_at: session.expires_at, remember: session.remember },
+  });
 }
 
 export async function changePassword(c: Ctx): Promise<Response> {
@@ -184,7 +199,7 @@ export async function listSessions(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const current = requireSession(c);
   const { results } = await c.env.DB.prepare(
-    `SELECT id, created_at, last_seen_at, expires_at, user_agent
+    `SELECT id, created_at, last_seen_at, expires_at, user_agent, remember
        FROM sessions WHERE user_id = ?1 ORDER BY last_seen_at DESC LIMIT 50`,
   )
     .bind(user.id)
@@ -194,9 +209,14 @@ export async function listSessions(c: Ctx): Promise<Response> {
       last_seen_at: number;
       expires_at: number;
       user_agent: string | null;
+      remember: number;
     }>();
   return c.json({
-    sessions: results.map((s) => ({ ...s, current: s.id === current.id })),
+    sessions: results.map((s) => ({
+      ...s,
+      remember: s.remember === 1,
+      current: s.id === current.id,
+    })),
   });
 }
 

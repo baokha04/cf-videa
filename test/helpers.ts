@@ -6,6 +6,7 @@ import { env } from 'cloudflare:test';
 import initSql from '../migrations/0001_init.sql?raw';
 import cronSql from '../migrations/0002_cron_heartbeat.sql?raw';
 import renameSql from '../migrations/0003_rename_maintenance.sql?raw';
+import syncSql from '../migrations/0004_manual_sync_and_remember.sql?raw';
 import type { Env } from '../src/types';
 
 export function testEnv(): Env {
@@ -19,7 +20,7 @@ export async function migrate(): Promise<void> {
     .first();
   if (already) return;
 
-  const statements = [initSql, cronSql, renameSql]
+  const statements = [initSql, cronSql, renameSql, syncSql]
     .join('\n')
     .split(';')
     .map((s) =>

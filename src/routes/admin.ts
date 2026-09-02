@@ -43,7 +43,19 @@ export async function health(c: Ctx): Promise<Response> {
   return c.json(out, out['ok'] ? 200 : 503);
 }
 
-/** Đối soát cho chính người dùng đang đăng nhập — nút "Đồng bộ lại index" trên UI. */
+/**
+ * Trạng thái đồng bộ CỦA CHÍNH người dùng đang đăng nhập.
+ *
+ * Cố ý không dùng `dirty_ideas` của /api/health cho việc này: con số đó đếm toàn hệ
+ * thống và endpoint đó lại công khai, nên vừa sai (lẫn ý tưởng của người khác) vừa
+ * không nên là nguồn dữ liệu cho giao diện của một tài khoản cụ thể.
+ */
+export async function syncStatus(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  return c.json({ dirty: await ideasDb.countDirty(c.env, user.id) });
+}
+
+/** Đối soát cho chính người dùng đang đăng nhập — nút "Đồng bộ index" trên UI. */
 export async function reindexMine(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const result = await reconcile(c.env, 50, user.id);
