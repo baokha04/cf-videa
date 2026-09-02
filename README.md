@@ -216,6 +216,27 @@ chung vào `script_outline`:
 được giữ nguyên (cột `position`), **không** sắp lại theo bảng chữ cái như tag: hook đầu
 danh sách thường là hook đang ưng nhất.
 
+Mỗi hook có **id riêng** và có endpoint riêng để thêm, sửa, xoá, đổi thứ tự. Ban đầu cả
+danh mục là một ô nhiều dòng gửi kèm khi bấm "Lưu"; cách đó không có khái niệm "một
+hook" — sửa một dòng là ghi đè cả danh mục, và hai tab mở cùng lúc thì tab lưu sau xoá
+sạch việc của tab kia. Mảng `hooks` trong body của `POST`/`PATCH /api/ideas` vẫn còn để
+gieo sẵn cả danh mục trong một lần gọi, nhưng **giao diện không dùng nó nữa**: có hai
+đường ghi cho cùng một thứ thì đường nào lưu sau sẽ nuốt đường kia.
+
+> ⚠️ **Bất biến dễ vỡ nhất của tính năng này.** Hook nằm trong văn bản đem đi nhúng
+> nhưng ở bảng khác, nên thêm/sửa/xoá/đổi thứ tự một hook làm nội dung ý tưởng đổi mà
+> **không một cột nào của bảng `ideas` nhúc nhích**. Vì vậy mọi route trong
+> `src/routes/hooks.ts` đều phải gọi `rehashIdea()` (`src/vec/sync.ts`) sau khi ghi.
+> Quên một chỗ thì `content_hash` giữ nguyên, hàng vẫn hiện là "đã index", và vector
+> trên Vectorize mốc lại vĩnh viễn mà không có dấu hiệu gì. `rehashIdea()` dùng chung
+> `buildEmbedText()` với lúc đối soát nên hash hai đường không thể lệch nhau — có test
+> khoá cả hai điều này.
+
+Đổi thứ tự ghi lại **toàn bộ** `position` chứ không hoán đổi hai hàng. Dài dòng hơn,
+nhưng nó chuẩn hoá luôn các `position` trùng hoặc thủng lỗ do lịch sử để lại — mà hoán
+đổi hai hàng thì không sửa được, thậm chí kẹt vĩnh viễn khi hai hàng cạnh nhau có cùng
+`position`.
+
 **Danh mục ý tưởng biến thể** nằm **cùng bảng** `ideas`, phân biệt bằng `kind`
 (`origin` | `variant`) và `parent_id`. Không tách bảng riêng vì một biến thể vẫn phải tìm
 được, thích được, index được và đổi trạng thái được y hệt một ý tưởng thường — tách bảng
@@ -234,6 +255,12 @@ Route vẫn kiểm trước, nhưng chỉ để có thông báo lỗi tử tế;
 niche, nền tảng và tag từ bản gốc sang — đó chính là điều làm nó là "biến thể" chứ không
 phải một ý tưởng mới tinh. Cố ý **không** chép danh mục hook: hook là thứ người ta muốn
 thử khác đi ở mỗi biến thể.
+
+Danh mục biến thể quản lý được ngay tại chỗ: mỗi thẻ có **Sửa**, **Xoá** và **Đồng bộ**.
+"Sửa" mở thẳng trang của biến thể chứ không sửa tại chỗ — một ý tưởng có cả chục trường,
+nên một ô sửa nhanh vài trường là lời hứa nửa vời. "Xoá" dùng chung
+`DELETE /api/ideas/:id` với nút xoá ở trang ý tưởng, nên nó cũng dọn vector trên
+Vectorize y hệt; không có đường xoá thứ hai nào bỏ sót việc đó.
 
 Xoá ý tưởng gốc là cascade xoá cả danh mục biến thể của nó. **Vectorize không biết gì về
 cascade**, nên route xoá gom id các biến thể lại *trước* lệnh `DELETE`; không làm vậy thì
@@ -419,6 +446,14 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | GET | `/api/ideas/:id/variants` | ✓ | Danh mục ý tưởng biến thể của một ý tưởng gốc |
 | POST | `/api/ideas/:id/variants` | ✓ | Tạo biến thể, kế thừa nguyên liệu của bản gốc |
 | POST | `/api/ideas/:id/reindex` | ✓ | Nút đồng bộ của RIÊNG ý tưởng này |
+| GET | `/api/ideas/:id/hooks` | ✓ | Danh mục video hook, kèm id và thứ tự từng mục |
+| POST | `/api/ideas/:id/hooks` | ✓ | `{text}` — thêm vào cuối danh mục, tối đa 30 |
+| PATCH | `/api/ideas/:id/hooks/:hookId` | ✓ | `{text}` — sửa đúng một mục |
+| DELETE | `/api/ideas/:id/hooks/:hookId` | ✓ | Xoá một mục |
+| POST | `/api/ideas/:id/hooks/:hookId/move` | ✓ | `{dir: up\|down}` — `moved:false` khi đã ở đầu/cuối |
+
+Bốn endpoint hook sau cùng đều làm ý tưởng cha "bẩn" trở lại (xem cảnh báo ở mục kho ý
+tưởng), nên chúng trả kèm `indexed: false` để giao diện cập nhật nhãn nút đồng bộ.
 | GET | `/api/search` | ✓ | Ngữ nghĩa, lọc thêm được `kind`; lùi về từ khoá khi AI/Vectorize hỏng |
 | GET | `/api/recommendations` | ✓ | `basis: likes \| cold_start` |
 | GET | `/api/tags` | ✓ | |
@@ -437,13 +472,27 @@ sự kiện ở cấp danh sách chứ không gắn thẳng vào từng nút: da
 `innerHTML` sau mỗi lần lọc, tải thêm hay đồng bộ, nên handler gắn trực tiếp sẽ biến mất
 cùng DOM cũ.
 
-**Trang ý tưởng** có ô cho ba trường nguyên liệu và một ô **Danh mục video hook** —
-mỗi dòng một hook. Ô nhiều dòng thay vì danh sách nút thêm/xoá: người ta chép cả nắm hook
-từ nơi khác về, và dán một lần vẫn nhanh hơn bấm mười lần.
+**Trang ý tưởng** có ô cho ba trường nguyên liệu, cộng hai mục quản lý nằm **ngoài**
+form: danh mục video hook và danh mục ý tưởng biến thể. Cả hai chỉ hiện sau khi ý tưởng
+đã được lưu — chưa có id thì chưa có gì để gắn hook hay biến thể vào.
 
-Ý tưởng gốc có mục **Ý tưởng biến thể** kèm nút tạo biến thể; biến thể thì thay vào đó
-hiện một dòng trỏ ngược về bản gốc và **không** có mục biến thể của riêng nó — cây đúng
-một tầng, hiện một mục không bao giờ có gì chỉ gây hiểu nhầm.
+**Danh mục video hook** là danh sách từng dòng: số thứ tự, ô sửa nội dung, và ba nút
+`↑ ↓ Xoá`. Sửa xong bấm ra ngoài là lưu, dùng sự kiện `change` (chỉ bắn khi giá trị thực
+sự đổi) thay vì thêm nút "Lưu" cho từng dòng — mỗi dòng đã có ba nút, thêm nút thứ tư thì
+trên màn hình 402px không còn chỗ cho chính nội dung hook. Nút `↑` của dòng đầu và `↓`
+của dòng cuối bị khoá sẵn. Trên màn hẹp, số thứ tự ở lại **cùng hàng** với ô nhập của nó
+và chỉ đám nút xuống dòng: cho ô nhập xuống dòng riêng làm con số trôi xuống giữa hai
+hook và trông như đang đánh số cho hook bên dưới.
+
+Ý tưởng gốc có mục **Ý tưởng biến thể**, mỗi thẻ kèm **Sửa · Xoá · Đồng bộ** và một nút
+tạo biến thể mới; biến thể thì thay vào đó hiện một dòng trỏ ngược về bản gốc và **không**
+có mục biến thể của riêng nó — cây đúng một tầng, hiện một mục không bao giờ có gì chỉ
+gây hiểu nhầm.
+
+Cả hai danh mục dùng uỷ quyền sự kiện ở cấp danh sách, vì chúng được vẽ lại bằng
+`innerHTML` sau mỗi thao tác nên handler gắn thẳng vào nút sẽ biến mất cùng DOM cũ. Sau
+mỗi lần sửa hook, trang đọc lại **riêng** trạng thái index chứ không gọi lại `fill()`:
+`fill()` vẽ lại cả danh mục hook, nên chữ đang gõ dở ở một dòng khác sẽ biến mất.
 
 **Chuyển sáng/tối.** Nút trên thanh điều hướng (và trên trang đăng nhập/đăng ký) chạy
 vòng: theo hệ thống → sáng → tối. Giữ lại lựa chọn "theo hệ thống" chứ không chỉ hai

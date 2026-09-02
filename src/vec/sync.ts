@@ -2,7 +2,7 @@ import type { Env, IdeaRow } from '../types';
 import * as ideasDb from '../db/ideas';
 import { tagsForIdeas } from '../db/tags';
 import { hooksForIdeas } from '../db/hooks';
-import { buildEmbedText, embed, embedOne, MODEL_ID } from './embeddings';
+import { buildEmbedText, contentHash, embed, embedOne, MODEL_ID } from './embeddings';
 import { getVectors, metaSignature, upsertIdeas } from './index';
 
 /**
@@ -136,6 +136,31 @@ export async function reconcile(
 
   const remaining = await ideasDb.countDirty(env, userId);
   return { processed, failed, remaining };
+}
+
+/**
+ * Tính lại content_hash của một ý tưởng từ trạng thái HIỆN TẠI của nó.
+ *
+ * Cần thiết vì danh mục video hook nằm ở bảng riêng nhưng lại đi vào văn bản đem đi
+ * nhúng: thêm, xoá, sửa hay đổi thứ tự một hook đều làm nội dung ý tưởng đổi, trong
+ * khi không một cột nào của bảng `ideas` nhúc nhích. Không gọi hàm này sau mỗi thao
+ * tác trên hook thì `content_hash` giữ nguyên, hàng vẫn "sạch", và vector trên
+ * Vectorize mốc lại vĩnh viễn — đúng loại hỏng im lặng mà cả thiết kế này né tránh.
+ *
+ * Dùng CHUNG buildEmbedText với lúc đối soát, nên hash ở đây không thể lệch với
+ * hash mà reconcile() tính ra sau đó.
+ */
+export async function rehashIdea(env: Env, userId: string, ideaId: string): Promise<void> {
+  const row = await ideasDb.getById(env, userId, ideaId);
+  if (!row) return;
+  const [tagMap, hookMap] = await Promise.all([
+    tagsForIdeas(env, [ideaId]),
+    hooksForIdeas(env, [ideaId]),
+  ]);
+  const hash = await contentHash(
+    buildEmbedText(row, tagMap.get(ideaId) ?? [], hookMap.get(ideaId) ?? []),
+  );
+  await ideasDb.setContentHash(env, userId, ideaId, hash);
 }
 
 /**

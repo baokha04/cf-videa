@@ -179,6 +179,30 @@ export async function update(
   return (res.meta.changes ?? 0) > 0;
 }
 
+/**
+ * Ghi lại content_hash sau khi một thứ NGOÀI bảng ideas thay đổi nội dung của nó —
+ * hiện là danh mục video hook, vì hook nằm trong văn bản đem đi nhúng.
+ *
+ * Có bump updated_at, và đó là chủ ý: sửa hook LÀ sửa ý tưởng, nên nó phải nổi lên
+ * đầu danh sách "sửa gần đây" y như mọi thay đổi khác. Con trỏ phân trang keyset
+ * chạy trên (updated_at, id) nên vẫn đúng.
+ *
+ * Không đụng embedded_hash: hàng tự thành bẩn vì content_hash vừa lệch đi.
+ */
+export async function setContentHash(
+  env: Env,
+  userId: string,
+  id: string,
+  contentHash: string,
+): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE ideas SET content_hash = ?3, updated_at = ?4 WHERE id = ?1 AND user_id = ?2`,
+  )
+    .bind(id, userId, contentHash, now())
+    .run();
+  return (res.meta.changes ?? 0) > 0;
+}
+
 export async function remove(env: Env, userId: string, id: string): Promise<boolean> {
   const res = await env.DB.prepare(`DELETE FROM ideas WHERE id = ?1 AND user_id = ?2`)
     .bind(id, userId)

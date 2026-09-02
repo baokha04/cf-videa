@@ -187,6 +187,73 @@ R=$(req POST "/api/ideas/$ORIGIN_ID/reindex" '{}' "$TOKEN_A")
 expect "POST /api/ideas/:id/reindex trả 200" 200 "$(code "$R")"
 echo "     outcome=$(jqr "$(body "$R")" outcome)"
 
+head_ "4c. Quản lý danh mục video hook (thêm / sửa / xoá / đổi thứ tự)"
+R=$(req GET "/api/ideas/$ORIGIN_ID/hooks" "" "$TOKEN_A")
+expect "GET danh mục hook trả 200" 200 "$(code "$R")"
+
+R=$(req POST "/api/ideas/$ORIGIN_ID/hooks" '{"text":"Hook thêm sau"}' "$TOKEN_A")
+expect "thêm hook trả 201" 201 "$(code "$R")"
+HOOK_ID=$(jqr "$(body "$R")" hook.id)
+if [ -n "$HOOK_ID" ]; then c_ok "lấy được id của hook vừa thêm"; else c_bad "không lấy được id hook"; fi
+
+# Hook nằm trong văn bản đem đi nhúng, nên thêm hook PHẢI làm ý tưởng bẩn trở lại.
+R=$(req GET /api/sync "" "$TOKEN_A")
+DIRTY_SAU_THEM=$(jqr "$(body "$R")" dirty)
+if [ "$DIRTY_SAU_THEM" -ge 1 ]; then
+  c_ok "thêm hook làm ý tưởng cần đồng bộ lại (dirty=$DIRTY_SAU_THEM)"
+else c_bad "thêm hook KHÔNG làm ý tưởng bẩn — vector sẽ mốc lại trong im lặng"; fi
+
+R=$(req PATCH "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID" '{"text":"Hook đã sửa"}' "$TOKEN_A")
+expect "sửa hook trả 200" 200 "$(code "$R")"
+R=$(req GET "/api/ideas/$ORIGIN_ID" "" "$TOKEN_A")
+expect "nội dung hook đã đổi trong danh mục của ý tưởng" \
+  '["Quán này không dành cho bạn","3 giây đầu quyết định tất cả","Hook đã sửa"]' \
+  "$(jqr "$(body "$R")" idea.hooks)"
+
+R=$(req POST "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID/move" '{"dir":"up"}' "$TOKEN_A")
+expect "đổi thứ tự hook trả 200" 200 "$(code "$R")"
+expect "hook đã nhích lên một bậc" "true" "$(jqr "$(body "$R")" moved)"
+R=$(req GET "/api/ideas/$ORIGIN_ID" "" "$TOKEN_A")
+expect "thứ tự mới được giữ đúng" \
+  '["Quán này không dành cho bạn","Hook đã sửa","3 giây đầu quyết định tất cả"]' \
+  "$(jqr "$(body "$R")" idea.hooks)"
+
+R=$(req POST "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID/move" '{"dir":"up"}' "$TOKEN_A")
+R=$(req POST "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID/move" '{"dir":"up"}' "$TOKEN_A")
+expect "đã ở đầu danh mục thì báo moved=false, không phải lỗi" "false" "$(jqr "$(body "$R")" moved)"
+
+R=$(req POST "/api/ideas/$ORIGIN_ID/hooks" '{"text":"   "}' "$TOKEN_A")
+expect "hook rỗng bị từ chối" 400 "$(code "$R")"
+
+R=$(req DELETE "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID" "" "$TOKEN_A")
+expect "xoá hook trả 204" 204 "$(code "$R")"
+R=$(req GET "/api/ideas/$ORIGIN_ID" "" "$TOKEN_A")
+expect "hook đã biến khỏi danh mục" \
+  '["Quán này không dành cho bạn","3 giây đầu quyết định tất cả"]' \
+  "$(jqr "$(body "$R")" idea.hooks)"
+R=$(req DELETE "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID" "" "$TOKEN_A")
+expect "xoá lại hook đã xoá trả 404" 404 "$(code "$R")"
+
+head_ "4d. Quản lý danh mục ý tưởng biến thể (xoá tại chỗ)"
+R=$(req POST "/api/ideas/$ORIGIN_ID/variants" '{"title":"Biến thể sẽ bị xoá"}' "$TOKEN_A")
+TMP_VARIANT=$(jqr "$(body "$R")" idea.id)
+R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_A")
+COUNT_V2=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
+expect "danh mục biến thể giờ có hai mục" 2 "$COUNT_V2"
+
+R=$(req DELETE "/api/ideas/$TMP_VARIANT" "" "$TOKEN_A")
+expect "xoá biến thể ngay từ danh mục trả 204" 204 "$(code "$R")"
+R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_A")
+COUNT_V3=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
+expect "danh mục biến thể còn lại một mục" 1 "$COUNT_V3"
+R=$(req GET "/api/ideas/$TMP_VARIANT" "" "$TOKEN_A")
+expect "biến thể đã xoá thì không đọc lại được" 404 "$(code "$R")"
+
+R=$(req PATCH "/api/ideas/$VARIANT_ID" '{"title":"Biến thể đã đổi tên"}' "$TOKEN_A")
+expect "sửa biến thể qua PATCH trả 200" 200 "$(code "$R")"
+expect "tên biến thể đã đổi" "Biến thể đã đổi tên" "$(jqr "$(body "$R")" idea.title)"
+expect "sửa xong vẫn là biến thể của đúng ý tưởng gốc" "$ORIGIN_ID" "$(jqr "$(body "$R")" idea.parent_id)"
+
 head_ "5. Cách ly giữa các tài khoản"
 TOKEN_B=$(register_token "{\"email\":\"$EMAIL_B\",\"password\":\"$PW\"}")
 if [ -n "$TOKEN_B" ]; then c_ok "đăng ký được tài khoản thứ hai"; else c_bad "không đăng ký được tài khoản thứ hai"; fi
@@ -206,6 +273,10 @@ R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_B")
 expect "xem danh mục biến thể của người khác trả 404" 404 "$(code "$R")"
 R=$(req POST "/api/ideas/$ORIGIN_ID/variants" '{}' "$TOKEN_B")
 expect "tạo biến thể trên ý tưởng của người khác trả 404" 404 "$(code "$R")"
+R=$(req GET "/api/ideas/$ORIGIN_ID/hooks" "" "$TOKEN_B")
+expect "xem danh mục hook của người khác trả 404" 404 "$(code "$R")"
+R=$(req POST "/api/ideas/$ORIGIN_ID/hooks" '{"text":"chiếm chỗ"}' "$TOKEN_B")
+expect "thêm hook vào ý tưởng của người khác trả 404" 404 "$(code "$R")"
 
 R=$(req GET "/api/ideas?limit=50" "" "$TOKEN_B")
 COUNT_B=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
