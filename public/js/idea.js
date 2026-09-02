@@ -27,6 +27,18 @@ const hookNew = $('#hook-new');
 let liked = false;
 let kind = 'origin';
 
+/**
+ * Danh mục hook của một ý tưởng CHƯA được lưu.
+ *
+ * Ý tưởng chưa tồn tại thì chưa có id để gắn hook vào, nên các endpoint quản lý
+ * từng mục không dùng được. Nhưng bắt người ta lưu trước rồi mới được nhập hook là
+ * lấy đi một thứ vốn làm được ngay trong form — nên các dòng ở đây sống tạm trong
+ * bộ nhớ và đi kèm lần POST tạo ý tưởng. Sau khi lưu xong, trang nạp lại theo id và
+ * mọi thao tác chuyển sang gọi thẳng API.
+ */
+let pendingHooks = [];
+const tempId = () => `tmp-${Math.random().toString(36).slice(2)}`;
+
 function readForm() {
   return {
     title: $('#title').value.trim(),
@@ -42,9 +54,10 @@ function readForm() {
       .value.split(',')
       .map((t) => t.trim())
       .filter(Boolean),
-    // Danh mục hook CỐ Ý không nằm trong form này. Nó có endpoint riêng cho từng
-    // mục (xem loadHooks bên dưới), nên gửi kèm ở đây sẽ là nguồn sự thật thứ hai
-    // và lần bấm "Lưu" sẽ ghi đè mất những gì vừa sửa trong danh mục.
+    // CHỈ khi tạo mới. Với ý tưởng đã lưu thì danh mục hook có endpoint riêng cho
+    // từng mục, và gửi kèm ở đây sẽ là nguồn sự thật thứ hai: lần bấm "Lưu" sẽ ghi
+    // đè mất đúng những gì vừa sửa trong danh mục.
+    ...(isNew ? { hooks: pendingHooks.map((h) => h.text) } : {}),
   };
 }
 
@@ -79,7 +92,6 @@ function fill(idea) {
   }
   $('#variants-wrap').hidden = idea.kind !== 'origin';
   if (idea.kind === 'origin') void loadVariants();
-  $('#hooks-wrap').hidden = false;
   void loadHooks();
 }
 
@@ -124,15 +136,27 @@ function hookRow(h, i, total) {
 }
 
 function renderHooks(items) {
-  $('#hooks-sub').textContent = items.length
-    ? `${items.length} hook cho ý tưởng này.`
-    : 'Chưa có hook nào. Thêm cách mở đầu đầu tiên bên dưới.';
+  const n = items.length;
+  $('#hooks-sub').textContent = isNew
+    ? n
+      ? `${n} hook, sẽ được lưu cùng ý tưởng khi bạn bấm "Lưu".`
+      : 'Thêm cách mở đầu ngay bây giờ — chúng được lưu cùng ý tưởng.'
+    : n
+      ? `${n} hook cho ý tưởng này.`
+      : 'Chưa có hook nào. Thêm cách mở đầu đầu tiên bên dưới.';
+  $('#hooks-note').textContent = isNew
+    ? 'Ý tưởng chưa được lưu, nên các hook này còn nằm trên trình duyệt. Bấm "Lưu" để ghi chúng cùng ý tưởng.'
+    : 'Sửa xong một dòng thì bấm ra ngoài là tự lưu. Dòng trên cùng là hook bạn đang ưng nhất — dùng ↑ ↓ để sắp lại.';
   hookList.innerHTML = items
     .map((h, i) => hookRow(h, i, items.length))
     .join('');
 }
 
 async function loadHooks() {
+  if (isNew) {
+    renderHooks(pendingHooks);
+    return;
+  }
   try {
     const { items } = await get(`/api/ideas/${encodeURIComponent(id)}/hooks`);
     renderHooks(items);
@@ -233,6 +257,21 @@ hookList.addEventListener('click', async (e) => {
     if (!confirm(`Xoá hook "${text}"?`)) return;
   }
 
+  // Ý tưởng chưa lưu: sửa thẳng mảng trong bộ nhớ, không gọi API nào.
+  if (isNew) {
+    const i = pendingHooks.findIndex((h) => h.id === hookId);
+    if (i < 0) return;
+    if (act === 'del') {
+      pendingHooks.splice(i, 1);
+    } else {
+      const j = act === 'up' ? i - 1 : i + 1;
+      if (j < 0 || j >= pendingHooks.length) return;
+      [pendingHooks[i], pendingHooks[j]] = [pendingHooks[j], pendingHooks[i]];
+    }
+    renderHooks(pendingHooks);
+    return;
+  }
+
   // Khoá cả dòng chứ không riêng nút vừa bấm: bấm ↑ rồi bấm Xoá ngay lúc lệnh đầu
   // chưa xong sẽ thao tác trên một danh mục đã cũ.
   for (const b of row.querySelectorAll('button')) b.disabled = true;
@@ -271,6 +310,13 @@ hookList.addEventListener('change', async (e) => {
     await loadHooks();
     return;
   }
+  if (isNew) {
+    const h = pendingHooks.find((x) => x.id === row.dataset.id);
+    if (h) h.text = text;
+    // Cố ý KHÔNG vẽ lại: vẽ lại làm mất tiêu điểm khi người dùng dùng Tab để đi
+    // sang dòng kế tiếp, mà giá trị trong ô vốn đã đúng rồi.
+    return;
+  }
   input.disabled = true;
   try {
     const r = await patch(
@@ -288,6 +334,16 @@ $('#hook-add').addEventListener('click', async () => {
   const text = hookNew.value.trim();
   if (!text) {
     show(msg, 'Nhập nội dung hook trước đã.');
+    return;
+  }
+  if (isNew) {
+    if (pendingHooks.length >= 30) {
+      show(msg, 'Tối đa 30 hook cho mỗi ý tưởng.');
+      return;
+    }
+    pendingHooks.push({ id: tempId(), text });
+    hookNew.value = '';
+    renderHooks(pendingHooks);
     return;
   }
   $('#hook-add').disabled = true;
@@ -333,6 +389,12 @@ async function loadSimilar() {
     // Gợi ý tương tự là phần thêm; hỏng thì im lặng bỏ qua.
   }
 }
+
+// Danh mục hook hiện ngay cả trên trang tạo mới. Ẩn nó đi cho tới khi lưu xong là
+// lấy mất một thứ vốn nhập được ngay trong form, và người dùng không có cách nào
+// đoán ra rằng nó tồn tại.
+$('#hooks-wrap').hidden = false;
+renderHooks(pendingHooks);
 
 if (!isNew) {
   try {

@@ -84,8 +84,12 @@
   </div>
 
   <!-- Danh mục video hook. Mỗi mục có id riêng nên sửa và xoá được từng dòng, khác
-       hẳn một ô nhiều dòng vốn ghi đè cả danh mục mỗi lần lưu. Chỉ hiện khi ý tưởng
-       đã tồn tại — chưa có id thì chưa có gì để gắn hook vào. -->
+       hẳn một ô nhiều dòng vốn ghi đè cả danh mục mỗi lần lưu.
+
+       Hiện cả trên trang tạo mới: lúc đó ý tưởng chưa có id nên các dòng sống tạm
+       trong bộ nhớ và đi kèm lần POST tạo ý tưởng (xem pendingHooks trong idea.js).
+       Ẩn nó đi cho tới khi lưu xong là lấy mất một thứ vốn nhập được ngay trong
+       form, và không ai đoán ra được là nó có tồn tại. -->
   <section id="hooks-wrap" hidden>
     <h2>Danh mục video hook</h2>
     <p class="sub" id="hooks-sub">Các cách mở đầu đã nghĩ ra cho ý tưởng này.</p>
@@ -101,10 +105,7 @@
           <button type="button" id="hook-add">Thêm</button>
         </div>
       </div>
-      <p class="small muted spaced">
-        Sửa xong một dòng thì bấm ra ngoài là tự lưu. Dòng trên cùng là hook bạn đang
-        ưng nhất — dùng ↑ ↓ để sắp lại.
-      </p>
+      <p class="small muted spaced" id="hooks-note"></p>
     </div>
   </section>
 

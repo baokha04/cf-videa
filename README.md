@@ -473,8 +473,17 @@ sự kiện ở cấp danh sách chứ không gắn thẳng vào từng nút: da
 cùng DOM cũ.
 
 **Trang ý tưởng** có ô cho ba trường nguyên liệu, cộng hai mục quản lý nằm **ngoài**
-form: danh mục video hook và danh mục ý tưởng biến thể. Cả hai chỉ hiện sau khi ý tưởng
-đã được lưu — chưa có id thì chưa có gì để gắn hook hay biến thể vào.
+form: danh mục video hook và danh mục ý tưởng biến thể.
+
+**Danh mục hook hiện cả ở trang tạo mới**, dù lúc đó ý tưởng chưa có id để gắn hook vào.
+Các dòng nhập trước khi lưu sống tạm trong bộ nhớ trình duyệt (`pendingHooks`) và đi kèm
+lần `POST /api/ideas` — đó chính là lý do mảng `hooks` trong body vẫn tồn tại. Sau khi
+lưu, trang nạp lại theo id và mọi thao tác chuyển sang gọi endpoint từng mục. Bản đầu
+tiên ẩn mục này cho tới khi lưu xong, và đó là một sai lầm: nó lấy mất một thứ vốn nhập
+được ngay trong form, mà không ai đoán ra được là nó có tồn tại.
+
+Danh mục biến thể thì vẫn chỉ hiện sau khi lưu, và đó là đúng: một biến thể là một hàng
+`ideas` thật, không có bản nháp nào để giữ tạm.
 
 **Danh mục video hook** là danh sách từng dòng: số thứ tự, ô sửa nội dung, và ba nút
 `↑ ↓ Xoá`. Sửa xong bấm ra ngoài là lưu, dùng sự kiện `change` (chỉ bắn khi giá trị thực
