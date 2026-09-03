@@ -61,8 +61,7 @@ $('#sessions').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try {
     await del(`/api/auth/sessions/${encodeURIComponent(id)}`);
-    await loadTemplate();
-await loadSessions();
+    await loadSessions();
   } catch (err) {
     show($('#smsg'), err.message);
   }
@@ -131,8 +130,7 @@ $('#pw').addEventListener('submit', async (e) => {
       `Đã đổi mật khẩu. Đã thu hồi ${res.revoked_sessions} phiên khác.`,
       'ok',
     );
-    await loadTemplate();
-await loadSessions();
+    await loadSessions();
   } catch (err) {
     show($('#pwmsg'), err.message);
   } finally {
@@ -145,8 +143,7 @@ $('#revokeall').addEventListener('click', async () => {
   try {
     const res = await post('/api/auth/revoke-all');
     show($('#smsg'), `Đã thu hồi ${res.revoked_sessions} phiên khác.`, 'ok');
-    await loadTemplate();
-await loadSessions();
+    await loadSessions();
   } catch (err) {
     show($('#smsg'), err.message);
   }

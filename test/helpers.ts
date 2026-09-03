@@ -8,6 +8,8 @@ import cronSql from '../migrations/0002_cron_heartbeat.sql?raw';
 import renameSql from '../migrations/0003_rename_maintenance.sql?raw';
 import syncSql from '../migrations/0004_manual_sync_and_remember.sql?raw';
 import hooksSql from '../migrations/0005_hooks_variants_prompts.sql?raw';
+import negPromptSql from '../migrations/0006_negative_prompt_and_lineage.sql?raw';
+import indexAllSql from '../migrations/0007_index_hooks_variants.sql?raw';
 import type { Env } from '../src/types';
 
 export function testEnv(): Env {
@@ -17,11 +19,11 @@ export function testEnv(): Env {
 export async function migrate(): Promise<void> {
   const db = testEnv().DB;
   const already = await db
-    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='idea_variants'`)
+    .prepare(`SELECT name FROM pragma_table_info('hooks') WHERE name = 'content_hash'`)
     .first();
   if (already) return;
 
-  const statements = [initSql, cronSql, renameSql, syncSql, hooksSql]
+  const statements = [initSql, cronSql, renameSql, syncSql, hooksSql, negPromptSql, indexAllSql]
     .join('\n')
     .split(';')
     .map((s) =>
@@ -66,17 +68,32 @@ export function fakeVectorize() {
     },
     async query(
       vector: number[],
-      opts: { topK: number; filter?: Record<string, { $eq?: unknown }> },
+      opts: { topK: number; filter?: MetaFilter },
     ) {
-      const userId = opts.filter?.['user_id']?.$eq;
       const matches = [...store.entries()]
-        .filter(([, v]) => userId === undefined || v.metadata['user_id'] === userId)
+        .filter(([, v]) => matchesFilter(v.metadata, opts.filter))
         .map(([id, v]) => ({ id, score: cosine(vector, v.values) }))
         .sort((a, b) => b.score - a.score)
         .slice(0, opts.topK);
       return { count: matches.length, matches };
     },
   };
+}
+
+/**
+ * Chỉ hiểu $eq và $in — đúng hai toán tử mà src/vec/index.ts dùng. Filter phải được
+ * áp thật chứ không chỉ theo user_id: từ khi hook và biến thể dùng CHUNG index với ý
+ * tưởng, `type` là thứ duy nhất ngăn tìm kiếm ý tưởng trả về một cái hook.
+ */
+type MetaFilter = Record<string, { $eq?: unknown; $in?: unknown[] }>;
+
+function matchesFilter(meta: Record<string, unknown>, filter?: MetaFilter): boolean {
+  if (!filter) return true;
+  return Object.entries(filter).every(([key, cond]) => {
+    if (cond.$in !== undefined) return cond.$in.includes(meta[key]);
+    if (cond.$eq !== undefined) return meta[key] === cond.$eq;
+    return true;
+  });
 }
 
 function cosine(a: number[], b: number[]): number {

@@ -83,12 +83,18 @@ app.delete('/ideas/:id', ideas.deleteIdea);
 app.post('/ideas/:id/like', ideas.likeIdea);
 app.delete('/ideas/:id/like', ideas.unlikeIdea);
 app.get('/ideas/:id/similar', search.similar);
+// Index đúng một mục. POST vì nó gọi Workers AI và ghi lên Vectorize.
+app.post('/ideas/:id/index', ideas.indexIdea);
+// Kết hợp gốc + biến thể + hook thành một ý tưởng gốc MỚI. POST vì nó ghi dữ liệu —
+// khác hẳn GET /prompt bên dưới, vốn chỉ ghép ra chuỗi rồi thôi.
+app.post('/ideas/combine', ideas.combineIdea);
 
 // Biến thể của một ý tưởng gốc.
 app.get('/ideas/:id/variants', variants.listVariants);
 app.post('/ideas/:id/variants', variants.createVariant);
 app.patch('/variants/:id', variants.updateVariant);
 app.delete('/variants/:id', variants.deleteVariant);
+app.post('/variants/:id/index', variants.indexVariant);
 
 // Thư viện hook, có nhóm danh mục.
 app.get('/hook-categories', hooks.listCategories);
@@ -99,6 +105,7 @@ app.get('/hooks', hooks.listHooks);
 app.post('/hooks', hooks.createHook);
 app.patch('/hooks/:id', hooks.updateHook);
 app.delete('/hooks/:id', hooks.deleteHook);
+app.post('/hooks/:id/index', hooks.indexHook);
 
 // Ghép prompt: GET vì đây là thao tác đọc thuần tuý, không đổi gì.
 app.get('/prompt', variants.generatePrompt);

@@ -13,6 +13,7 @@ const BASE = {
   platform: 'tiktok' as const,
   niche: '',
   status: 'idea' as const,
+  negative_prompt: '',
 };
 
 async function mkUser() {
@@ -55,7 +56,7 @@ describe('truy vấn ý tưởng', () => {
     const d = await ideasDb.create(testEnv(), uid, { ...BASE, title: 'D' }, 'h4');
     await variantsDb.create(testEnv(), uid, d.id, {
       title: 'Phiên bản cà phê', angle: '', script_outline: '', sort_order: 0,
-    });
+    }, 'h-test');
     const { rows } = await ideasDb.list(testEnv(), uid, { q: 'cà phê' }, 50, null);
     expect(rows.map((r) => r.title).sort()).toEqual(['A', 'B', 'D', 'cà phê C']);
   });
@@ -139,5 +140,50 @@ describe('hash nội dung dùng cho đồng bộ Vectorize', () => {
     const { sha256Hex } = await import('../src/util/hash');
     expect(withModel).not.toBe(await sha256Hex(text));
     expect(withModel).toBe(await sha256Hex(`${text}|${MODEL_ID}`));
+  });
+});
+
+describe('negative prompt', () => {
+  let uid: string;
+
+  beforeEach(async () => {
+    await migrate();
+    await testEnv().DB.prepare('DELETE FROM users').run();
+    uid = (await mkUser()).id;
+  });
+
+  it('lưu và đọc lại nguyên vẹn', async () => {
+    const input = { ...BASE, negative_prompt: 'không nhạc bản quyền, không mặt trẻ em' };
+    const row = await ideasDb.create(testEnv(), uid, input, 'h1');
+    expect(row.negative_prompt).toBe('không nhạc bản quyền, không mặt trẻ em');
+    const fresh = await ideasDb.getById(testEnv(), uid, row.id);
+    expect(fresh?.negative_prompt).toBe('không nhạc bản quyền, không mặt trẻ em');
+  });
+
+  it('sửa được, và mặc định là chuỗi rỗng chứ không phải NULL', async () => {
+    const row = await ideasDb.create(testEnv(), uid, BASE, 'h1');
+    expect(row.negative_prompt).toBe('');
+    await ideasDb.update(
+      testEnv(), uid, row.id, { ...BASE, negative_prompt: 'tránh cận mặt' }, 'h2',
+    );
+    expect((await ideasDb.getById(testEnv(), uid, row.id))?.negative_prompt).toBe('tránh cận mặt');
+  });
+
+  it('KHÔNG nằm trong văn bản nhúng, nên đổi nó không làm hash đổi', async () => {
+    // Ràng buộc quan trọng nhất của tính năng này. Nhúng một danh sách "không được xuất
+    // hiện" thì embedding đọc dấu trừ thành dấu cộng và ý tưởng khớp với đúng thứ nó
+    // muốn tránh. Kèm theo: thêm cột này không làm bẩn lại toàn bộ database.
+    const base = { title: 'A', script_outline: 'C', niche: 'D', platform: 'tiktok' as const };
+    const h0 = await contentHash(ideaEmbedText(base, [], []));
+    const withNeg = { ...base, negative_prompt: 'không nhạc bản quyền' };
+    expect(await contentHash(ideaEmbedText(withNeg, [], []))).toBe(h0);
+    expect(ideaEmbedText(withNeg, [], [])).not.toContain('bản quyền');
+  });
+
+  it('ý tưởng tự viết không có lineage', async () => {
+    const row = await ideasDb.create(testEnv(), uid, BASE, 'h1');
+    expect(row.source_idea_id).toBeNull();
+    expect(row.source_variant_id).toBeNull();
+    expect(row.source_hook_id).toBeNull();
   });
 });

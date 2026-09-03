@@ -54,14 +54,28 @@
       <label for="script_outline">Dàn ý kịch bản</label>
       <textarea id="script_outline" maxlength="8000"></textarea>
 
+      <label for="negative_prompt">
+        Negative prompt
+        <span class="muted small">(những gì KHÔNG được xuất hiện trong video)</span>
+      </label>
+      <textarea id="negative_prompt" maxlength="2000" rows="3"
+                placeholder="không nhạc bản quyền, không quay mặt trẻ em, tránh cận cảnh…"></textarea>
+      <p class="muted small">
+        Chỉ đi vào prompt qua biến <code>{{negative_prompt}}</code>. Cố ý không tham gia
+        tìm kiếm ngữ nghĩa: nhúng một danh sách cấm sẽ khiến ý tưởng khớp với đúng thứ
+        nó muốn tránh.
+      </p>
+
       <div class="actions">
         <button class="primary" type="submit" id="save">Lưu</button>
+        <button type="button" id="index-one" hidden>Index ý tưởng này</button>
         <button type="button" id="like" hidden></button>
         <button type="button" id="del" class="danger" hidden>Xoá</button>
         <a href="/app"><button type="button">Quay lại</button></a>
       </div>
     </form>
     <p id="msg" class="msg"></p>
+    <div id="dup-warn" class="msg note" hidden></div>
   </div>
 
   <section id="variants-wrap" hidden>
@@ -96,14 +110,21 @@
   </section>
 
   <section id="prompt-wrap" hidden>
-    <h2>Tạo prompt</h2>
+    <h2>Kết hợp</h2>
     <p class="sub">
-      Chọn một biến thể và một hook — mỗi cặp cho ra một prompt khác nhau. Sửa mẫu
-      prompt ở trang <a href="/account">Tài khoản</a>.
+      Ý tưởng gốc + biến thể + hook. Xem trước ra prompt để chép đi dùng ngay, hoặc lưu
+      thành một ý tưởng gốc MỚI trong kho. Sửa mẫu prompt ở trang
+      <a href="/account">Tài khoản</a>.
     </p>
 
     <div class="card">
       <div class="row">
+        <div>
+          <!-- Ý tưởng gốc là trang bạn đang mở. Cố ý hiển thị thay vì làm một ô chọn
+               chỉ có đúng một lựa chọn: biến thể luôn thuộc về ý tưởng này. -->
+          <label for="pidea">Ý tưởng gốc</label>
+          <input id="pidea" readonly>
+        </div>
         <div>
           <label for="pvariant">Biến thể</label>
           <select id="pvariant"></select>
@@ -114,7 +135,8 @@
         </div>
       </div>
       <div class="actions">
-        <button class="primary" type="button" id="pgen">Tạo prompt</button>
+        <button class="primary" type="button" id="pgen">Xem trước prompt</button>
+        <button type="button" id="psave">Lưu thành ý tưởng gốc</button>
         <button type="button" id="pcopy" hidden>Chép</button>
       </div>
       <p id="pmsg" class="msg"></p>

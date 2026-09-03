@@ -2,9 +2,27 @@ import type { Ctx } from '../http/guard';
 import { pathParam, readJson, requireUser } from '../http/guard';
 import { badRequest, notFound } from '../http/response';
 import * as hooksDb from '../db/hooks';
+import { computeHookHash } from '../content';
+import { deleteVectors, queueGc, vectorId } from '../vec/index';
+import { indexOne } from '../vec/sync';
 import { normText, requiredText } from '../util/validate';
 
 /** Thư viện hook có nhóm danh mục. Hook không gắn cứng vào biến thể nào. */
+
+/** Xem chú thích ở routes/variants.ts — cùng một lý do. */
+function toDto(row: hooksDb.HookRow) {
+  const {
+    content_hash, embedded_hash, indexed_meta_hash, embedding_model, embedded_at,
+    embed_attempts, ...rest
+  } = row;
+  void content_hash; void embedding_model; void embedded_at; void embed_attempts;
+  return {
+    ...rest,
+    indexed:
+      embedded_hash === row.content_hash &&
+      indexed_meta_hash === hooksDb.hookMetaSignature(row),
+  };
+}
 
 function parseSortOrder(raw: unknown): number {
   const n = Number(raw ?? 0);
@@ -74,21 +92,24 @@ export async function listHooks(c: Ctx): Promise<Response> {
   // 'none' lọc riêng nhóm chưa phân loại; bỏ trống là lấy tất cả.
   const filter = raw === undefined ? undefined : raw === 'none' ? null : raw;
   const rows = await hooksDb.listHooks(c.env, user.id, filter);
-  return c.json({ hooks: rows });
+  return c.json({ hooks: rows.map(toDto) });
 }
 
 export async function createHook(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const body = await readJson(c);
-  const row = await hooksDb.createHook(c.env, user.id, {
+  const input = {
     text: requiredText(body['text'], 500, 'text'),
     note: normText(body['note'], 300, 'note'),
     category_id: parseCategoryId(body['category_id']),
-  });
+  };
+  // Như ý tưởng: chỉ tính hash và ghi D1. Không nhúng, không đụng Vectorize —
+  // việc đó để người dùng bấm nút Index của chính hook này.
+  const row = await hooksDb.createHook(c.env, user.id, input, await computeHookHash(input));
   // null ở đây nghĩa là danh mục không thuộc người dùng này — trả 404 chứ không phải
   // 403, để không xác nhận rằng danh mục đó tồn tại.
   if (!row) throw notFound('Không tìm thấy danh mục.');
-  return c.json({ hook: row }, 201);
+  return c.json({ hook: toDto(row) }, 201);
 }
 
 export async function updateHook(c: Ctx): Promise<Response> {
@@ -98,19 +119,43 @@ export async function updateHook(c: Ctx): Promise<Response> {
   if (!existing) throw notFound('Không tìm thấy hook.');
   const body = await readJson(c);
   const has = (k: string) => Object.prototype.hasOwnProperty.call(body, k);
-  const ok = await hooksDb.updateHook(c.env, user.id, id, {
+  const input = {
     text: has('text') ? requiredText(body['text'], 500, 'text') : existing.text,
     note: has('note') ? normText(body['note'], 300, 'note') : existing.note,
     category_id: has('category_id') ? parseCategoryId(body['category_id']) : existing.category_id,
-  });
+  };
+  // Đổi mỗi danh mục cũng phải được nhìn thấy, dù content_hash không đổi: danh mục nằm
+  // trong metadata của vector, và cột indexed_meta_hash lo việc đó (migrations/0007).
+  const ok = await hooksDb.updateHook(c.env, user.id, id, input, await computeHookHash(input));
   if (!ok) throw notFound('Không tìm thấy hook hoặc danh mục.');
   const fresh = await hooksDb.getHook(c.env, user.id, id);
-  return c.json({ hook: fresh });
+  return c.json({ hook: fresh ? toDto(fresh) : null });
 }
 
 export async function deleteHook(c: Ctx): Promise<Response> {
   const user = requireUser(c);
-  const ok = await hooksDb.deleteHook(c.env, user.id, pathParam(c, 'id'));
+  const id = pathParam(c, 'id');
+  const ok = await hooksDb.deleteHook(c.env, user.id, id);
   if (!ok) throw notFound('Không tìm thấy hook.');
+
+  // Từ khi hook có vector riêng, xoá hàng mà không xoá vector là để lại một vector mồ
+  // côi chiếm suất topK mãi mãi. Hoãn được, nhưng không bỏ được.
+  const vid = vectorId('hook', id);
+  c.executionCtx.waitUntil(
+    deleteVectors(c.env, [vid]).catch(async (err) => {
+      console.error('deleteVectors failed', vid, err);
+      await queueGc(c.env, [vid], user.id).catch(() => {});
+    }),
+  );
   return c.body(null, 204);
+}
+
+/** Nút "Index" của riêng một hook. Xem chú thích ở ideas.indexIdea. */
+export async function indexHook(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  const id = pathParam(c, 'id');
+  const result = await indexOne(c.env, user.id, 'hook', id);
+  if (!result) throw notFound('Không tìm thấy hook.');
+  const fresh = await hooksDb.getHook(c.env, user.id, id);
+  return c.json({ hook: fresh ? toDto(fresh) : null, indexed: result.indexed });
 }

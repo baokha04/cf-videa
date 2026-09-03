@@ -36,6 +36,17 @@ export interface IdeaInput {
   platform: Platform;
   niche: string;
   status: IdeaStatus;
+  negative_prompt: string;
+}
+
+/**
+ * Xuất xứ của một ý tưởng sinh ra từ chức năng kết hợp. Chỉ ghi lúc tạo và không sửa
+ * được về sau: nó ghi lại ý tưởng này ĐÃ đến từ đâu, chứ không phải nó đang thuộc về ai.
+ */
+export interface IdeaLineage {
+  source_idea_id: string;
+  source_variant_id: string;
+  source_hook_id: string | null;
 }
 
 export async function getById(env: Env, userId: string, id: string): Promise<IdeaRow | null> {
@@ -67,13 +78,15 @@ export async function create(
   userId: string,
   input: IdeaInput,
   contentHash: string,
+  lineage?: IdeaLineage,
 ): Promise<IdeaRow> {
   const t = now();
   const id = newId();
   await env.DB.prepare(
     `INSERT INTO ideas (id, user_id, title, script_outline, platform, niche, status,
-                        visibility, lang, content_hash, embed_attempts, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'private', 'vi', ?8, 0, ?9, ?9)`,
+                        visibility, lang, negative_prompt, source_idea_id, source_variant_id,
+                        source_hook_id, content_hash, embed_attempts, created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'private', 'vi', ?8, ?9, ?10, ?11, ?12, 0, ?13, ?13)`,
   )
     .bind(
       id,
@@ -83,6 +96,10 @@ export async function create(
       input.platform,
       input.niche,
       input.status,
+      input.negative_prompt,
+      lineage?.source_idea_id ?? null,
+      lineage?.source_variant_id ?? null,
+      lineage?.source_hook_id ?? null,
       contentHash,
       t,
     )
@@ -93,6 +110,9 @@ export async function create(
     ...input,
     visibility: 'private',
     lang: 'vi',
+    source_idea_id: lineage?.source_idea_id ?? null,
+    source_variant_id: lineage?.source_variant_id ?? null,
+    source_hook_id: lineage?.source_hook_id ?? null,
     content_hash: contentHash,
     embedded_hash: null,
     indexed_meta_hash: null,
@@ -115,7 +135,7 @@ export async function update(
   const res = await env.DB.prepare(
     `UPDATE ideas
         SET title = ?3, script_outline = ?4, platform = ?5, niche = ?6,
-            status = ?7, content_hash = ?8, updated_at = ?9
+            status = ?7, negative_prompt = ?8, content_hash = ?9, updated_at = ?10
       WHERE id = ?1 AND user_id = ?2`,
   )
     .bind(
@@ -126,6 +146,7 @@ export async function update(
       input.platform,
       input.niche,
       input.status,
+      input.negative_prompt,
       contentHash,
       now(),
     )

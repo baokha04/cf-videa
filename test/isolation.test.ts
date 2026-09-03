@@ -20,6 +20,7 @@ const INPUT = {
   platform: 'tiktok' as const,
   niche: 'ẩm thực',
   status: 'idea' as const,
+  negative_prompt: '',
 };
 
 async function mkUser(email: string) {
@@ -133,11 +134,11 @@ describe('cách ly hooks và biến thể', () => {
   it('B không đọc/sửa/xoá được hook của A', async () => {
     const h = await hooksDb.createHook(testEnv(), A.id, {
       text: 'Hook bí mật của A', note: '', category_id: null,
-    });
+    }, 'h-test');
     expect(await hooksDb.getHook(testEnv(), B.id, h!.id)).toBeNull();
     expect(await hooksDb.updateHook(testEnv(), B.id, h!.id, {
       text: 'chiếm đoạt', note: '', category_id: null,
-    })).toBe(false);
+    }, 'h-test')).toBe(false);
     expect(await hooksDb.deleteHook(testEnv(), B.id, h!.id)).toBe(false);
     expect((await hooksDb.getHook(testEnv(), A.id, h!.id))?.text).toBe('Hook bí mật của A');
   });
@@ -155,21 +156,21 @@ describe('cách ly hooks và biến thể', () => {
     const catA = await hooksDb.createCategory(testEnv(), A.id, 'Của A', 0);
     expect(await hooksDb.createHook(testEnv(), B.id, {
       text: 'x', note: '', category_id: catA!.id,
-    })).toBeNull();
+    }, 'h-test')).toBeNull();
 
     const hookB = await hooksDb.createHook(testEnv(), B.id, {
       text: 'y', note: '', category_id: null,
-    });
+    }, 'h-test');
     expect(await hooksDb.updateHook(testEnv(), B.id, hookB!.id, {
       text: 'y', note: '', category_id: catA!.id,
-    })).toBe(false);
+    }, 'h-test')).toBe(false);
   });
 
   it('xoá danh mục KHÔNG xoá hook, chúng rơi về nhóm chưa phân loại', async () => {
     const cat = await hooksDb.createCategory(testEnv(), A.id, 'Tạm', 0);
     const h = await hooksDb.createHook(testEnv(), A.id, {
       text: 'giữ lại tôi', note: '', category_id: cat!.id,
-    });
+    }, 'h-test');
     await hooksDb.deleteCategory(testEnv(), A.id, cat!.id);
     const fresh = await hooksDb.getHook(testEnv(), A.id, h!.id);
     expect(fresh?.text).toBe('giữ lại tôi');
@@ -180,18 +181,18 @@ describe('cách ly hooks và biến thể', () => {
     const ideaA = await ideasDb.create(testEnv(), A.id, INPUT, 'ha');
     expect(await variantsDb.create(testEnv(), B.id, ideaA.id, {
       title: 'chiếm đoạt', angle: '', script_outline: '', sort_order: 0,
-    })).toBeNull();
+    }, 'h-test')).toBeNull();
   });
 
   it('B không đọc/sửa/xoá được biến thể của A', async () => {
     const ideaA = await ideasDb.create(testEnv(), A.id, INPUT, 'ha');
     const v = await variantsDb.create(testEnv(), A.id, ideaA.id, {
       title: 'Biến thể của A', angle: '', script_outline: '', sort_order: 0,
-    });
+    }, 'h-test');
     expect(await variantsDb.getById(testEnv(), B.id, v!.id)).toBeNull();
     expect(await variantsDb.update(testEnv(), B.id, v!.id, {
       title: 'x', angle: '', script_outline: '', sort_order: 0,
-    })).toBe(false);
+    }, 'h-test')).toBe(false);
     expect(await variantsDb.remove(testEnv(), B.id, v!.id)).toBe(false);
     expect(await variantsDb.listForIdea(testEnv(), B.id, ideaA.id)).toHaveLength(0);
   });
@@ -200,7 +201,7 @@ describe('cách ly hooks và biến thể', () => {
     const ideaA = await ideasDb.create(testEnv(), A.id, INPUT, 'ha');
     await variantsDb.create(testEnv(), A.id, ideaA.id, {
       title: 'v', angle: '', script_outline: '', sort_order: 0,
-    });
+    }, 'h-test');
     await ideasDb.remove(testEnv(), A.id, ideaA.id);
     const { results } = await testEnv().DB.prepare('SELECT id FROM idea_variants').all();
     expect(results).toHaveLength(0);

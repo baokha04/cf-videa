@@ -2,9 +2,10 @@
 
 Kho ý tưởng short video có quản lý tài khoản, chạy trên Cloudflare Pages + D1 + Vectorize.
 
-Mỗi người dùng có kho ý tưởng riêng (tiêu đề, hook, dàn ý kịch bản, nền tảng, niche, tag,
-trạng thái), tìm được **theo ý nghĩa** chứ không chỉ theo từ khoá, và được gợi ý lại những
-ý tưởng cũ hợp gu mà mình đã quên.
+Ba kho riêng cho mỗi người dùng — **ý tưởng gốc**, **ý tưởng biến thể**, **video hook** —
+mỗi mục có vector riêng và được index bằng nút bấm của chính nó. Tìm được **theo ý nghĩa**
+chứ không chỉ theo từ khoá, được cảnh báo khi vừa nghĩ ra một ý tưởng đã có sẵn, và ghép
+được gốc + biến thể + hook thành một ý tưởng gốc mới.
 
 **Không có LLM sinh nội dung ở đâu trong dự án này.** Lời gọi AI duy nhất là tạo *embedding*
 để index và truy vấn chính dữ liệu bạn đã nhập.
@@ -82,6 +83,10 @@ reindex toàn bộ.
 ý tưởng gốc  ──┬── nhiều BIẾN THỂ (tên, góc nhìn, dàn ý riêng)
                │
 thư viện HOOK ─┘   (dùng chung, có nhóm danh mục)
+
+        │
+        └── KẾT HỢP (gốc + biến thể + hook) ──> một Ý TƯỞNG GỐC MỚI
+                                                (có lineage trỏ về ba nguồn)
 ```
 
 **Hook không thuộc về ý tưởng nào.** Nó nằm trong một thư viện dùng chung, chia theo
@@ -97,7 +102,7 @@ phép thay chuỗi thuần tuý trên mẫu bạn sở hữu, nên cùng đầu 
 và đọc mẫu là biết trước prompt sẽ ra sao. Biến dùng được:
 
 `{{idea_title}}` `{{variant_title}}` `{{variant_angle}}` `{{hook}}` `{{hook_category}}`
-`{{script}}` `{{niche}}` `{{platform}}` `{{status}}` `{{tags}}`
+`{{script}}` `{{niche}}` `{{platform}}` `{{status}}` `{{tags}}` `{{negative_prompt}}`
 
 Hai quy tắc đáng nhớ:
 
@@ -113,12 +118,35 @@ Angle, Script outline…): các công cụ video AI dựa vào những nhãn đ�
 prompt và nhận diện tiếng Anh tốt hơn hẳn, trong khi nội dung sáng tạo để nguyên
 tiếng Việt vẫn tốt hơn dịch máy. Sửa mẫu ở trang **Tài khoản**.
 
-**Biến thể tham gia vào tìm kiếm.** Tiêu đề và góc nhìn của biến thể nằm trong văn bản
-đem đi nhúng, và tìm từ khoá trên D1 cũng quét sang bảng biến thể — người ta thường
-nhớ góc triển khai chứ không nhớ tiêu đề gốc. Hệ quả: **thêm hoặc sửa biến thể làm ý
-tưởng gốc "chưa đồng bộ" trở lại**, đúng như sửa nội dung ý tưởng (`src/content.ts`).
-Hook thì KHÔNG nằm trong văn bản nhúng — nó là thư viện dùng chung, không thuộc ý
-tưởng nào, nên không được ảnh hưởng tới việc tìm ý tưởng.
+**Cả ba kho đều có vector riêng, chung một index Vectorize.** Phân biệt bằng metadata
+`type` (`idea` | `variant` | `hook`); id vector của hook và biến thể mang tiền tố
+`hook:` / `variant:` cho dễ đọc khi soi index. Tìm kiếm ý tưởng lọc `type = 'idea'` —
+**điều kiện bắt buộc, không phải tối ưu hoá**: thiếu nó thì vector hook và biến thể
+chiếm suất trong topK rồi bị tầng hydrate lặng lẽ loại đi, và kết quả ít đi mà không có
+dấu hiệu gì (`src/vec/index.ts`).
+
+**Văn bản nhúng của hook và biến thể là hàm THUẦN của chính hàng đó.** Cụ thể là hai
+quyết định đáng nhớ, cả hai đều để tránh làm bẩn dây chuyền:
+
+- **Tên danh mục không nằm trong văn bản nhúng của hook.** Nếu có thì đổi tên một danh
+  mục sẽ làm bẩn mọi hook bên trong, và một thao tác sắp xếp lại biến thành hàng loạt
+  lời gọi Workers AI. Danh mục đi vào *metadata* của vector, nơi cột `indexed_meta_hash`
+  theo dõi được mà không tốn lần nhúng nào.
+- **Biến thể KHÔNG kế thừa dàn ý gốc trong văn bản nhúng**, dù lúc sinh prompt thì có
+  (quy tắc `{{script}}`). Hai việc khác nhau: prompt cần kịch bản đầy đủ để đem đi dựng
+  video, còn vector cần thứ *phân biệt* biến thể này với các biến thể khác. Nhét dàn ý
+  gốc vào cả n biến thể thì n vector xúm lại quanh một điểm và việc tìm theo góc triển
+  khai hỏng hẳn.
+
+**Biến thể vẫn tham gia vào tìm kiếm ý tưởng.** Tiêu đề và góc nhìn của nó nằm trong văn
+bản nhúng của ý tưởng CHA, và tìm từ khoá trên D1 cũng quét sang bảng biến thể — người ta
+thường nhớ góc triển khai chứ không nhớ tiêu đề gốc. Hệ quả: **thêm hoặc sửa biến thể làm
+CẢ HAI bẩn trở lại** — chính biến thể đó, và ý tưởng gốc của nó (`src/content.ts`).
+
+**Negative prompt không bao giờ được nhúng.** Nó nằm trên ý tưởng gốc, đi vào prompt qua
+biến `{{negative_prompt}}`, và cố ý đứng ngoài `ideaEmbedText`: nhúng một danh sách "không
+được xuất hiện" thì embedding đọc dấu trừ thành dấu cộng, và ý tưởng sẽ khớp với đúng thứ
+nó muốn tránh. Hệ quả tốt: sửa negative prompt không làm hàng nào bẩn.
 
 ## Khởi tạo hạ tầng
 
@@ -142,19 +170,30 @@ cách sửa duy nhất là upsert lại toàn bộ. Chạy trọn khối này tr
 
 ```bash
 for ix in videa-ideas videa-ideas-preview; do
-  for p in user_id status platform visibility; do
+  for p in user_id type status platform visibility; do
     npx wrangler vectorize create-metadata-index $ix --property-name=$p --type=string
   done
 done
 ```
 
+`type` phân biệt ba loại vector (`idea` | `variant` | `hook`) dùng chung một index.
+**Thêm nó vào một index đã có dữ liệu thì mọi vector cũ không mang `type` sẽ bị filter
+loại ra** — tìm kiếm trả rỗng, im lặng, không lỗi. Cách sửa duy nhất là upsert lại toàn
+bộ, và đã có sẵn đường cho việc đó:
+
+```bash
+curl -X POST https://cf-videa.pages.dev/api/admin/reindex \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Sec-Fetch-Site: none' -d '{"scope":"all"}'
+```
+
 Việc tạo metadata index là **bất đồng bộ** — lệnh trên chỉ trả về "enqueued". Đo thật:
-mất tới **~90 giây** để cả 4 property hiện ra. Phải poll cho đến khi đủ 4, **rồi mới**
+mất tới **~90 giây** để các property hiện ra. Phải poll cho đến khi đủ 5, **rồi mới**
 tạo ý tưởng đầu tiên:
 
 ```bash
 until [ "$(npx wrangler vectorize list-metadata-index videa-ideas \
-           | grep -cE 'user_id|status|platform|visibility')" -ge 4 ]; do
+           | grep -cE 'user_id|type|status|platform|visibility')" -ge 5 ]; do
   echo "chờ metadata index..."; sleep 15
 done
 ```
@@ -234,9 +273,21 @@ thì tuyệt đối không — chỉ ghi log. Chính cơ chế này đã tìm ra
 
 ### Index vector là thao tác THỦ CÔNG, và đó là chủ ý
 
-Tạo và sửa ý tưởng **chỉ ghi D1**. Không nhúng, không gọi Workers AI, không đụng
-Vectorize. Việc index dồn lại cho tới khi người dùng bấm **"Đồng bộ index"** ở trang
-kho ý tưởng.
+Tạo và sửa ý tưởng, biến thể hay hook đều **chỉ ghi D1**. Không nhúng, không gọi Workers
+AI, không đụng Vectorize. Việc index dồn lại cho tới khi người dùng bấm nút.
+
+**Có hai nút, và chúng đi hai đường khác nhau:**
+
+| Nút | Ở đâu | Làm gì |
+|---|---|---|
+| **Index** | trên từng thẻ ý tưởng / biến thể / hook | index ĐÚNG mục đó, và **kiểm tra trùng** (chỉ với ý tưởng) |
+| **Đồng bộ index** | trang kho ý tưởng | rút cạn cả ba kho theo lô 50 mỗi loại |
+
+Nút Index từng mục **không** dùng lại `reconcile(limit=1)`, và đó là điểm dễ sai nhất
+của tính năng này: worklist của `reconcile` sắp theo `updated_at`, nên nó sẽ index một
+hàng bẩn *nào đó* chứ không phải hàng người dùng vừa bấm — người dùng thấy nút chạy xong
+mà thẻ của mình vẫn "chưa index". `indexOne()` trong `src/vec/sync.ts` là đường riêng cho
+việc này, và `test/sync.test.ts` có một hồi quy khoá chặt đúng hành vi đó.
 
 Lý do: một lần nhúng tốn một lời gọi Workers AI và vài trăm mili giây cho mỗi lần
 lưu, trong khi người ta thường sửa đi sửa lại vài lần trước khi ưng — mỗi lần như vậy
@@ -248,7 +299,11 @@ và làm thao tác lưu nhanh hơn nhiều.
 | Thay đổi | Cột lệch | Việc đồng bộ phải làm |
 |---|---|---|
 | Sửa tiêu đề, kịch bản, niche, tag, nền tảng, **hoặc biến thể** | `embedded_hash` ≠ `content_hash` | nhúng lại rồi upsert |
-| Chỉ đổi **trạng thái** | `indexed_meta_hash` ≠ chữ ký hiện tại | lấy lại vector cũ, ghi đè metadata |
+| Chỉ đổi **trạng thái** ý tưởng, hoặc **danh mục** của hook | `indexed_meta_hash` ≠ chữ ký hiện tại | lấy lại vector cũ, ghi đè metadata |
+
+Cả ba bảng đều có đúng bộ cột này, và **hằng `*_DIRTY_SQL` trong TS phải khớp CHÍNH XÁC
+mệnh đề `WHERE` của partial index tương ứng trong SQL** — lệch một ký tự là SQLite âm
+thầm bỏ qua index và quét toàn bảng, không báo gì.
 
 Loại thứ hai là cái bẫy: `status` nằm trong metadata của vector nhưng KHÔNG nằm trong
 văn bản đem đi nhúng, nên đổi trạng thái không làm `content_hash` đổi. Nếu chỉ dựa vào
@@ -259,6 +314,54 @@ vĩnh viễn và `/api/search?status=…` lọc sai mà không có dấu hiệu 
 Thanh đồng bộ trên trang kho ý tưởng **luôn hiển thị**, kể cả khi đã sạch, và lấy số
 đếm từ `GET /api/sync` chứ không đếm trên danh sách đang hiện — danh sách bị phân
 trang và lọc, đếm trên đó sẽ bỏ sót ý tưởng nằm ngoài trang hiện tại.
+
+### Kiểm tra ý tưởng trùng — cảnh báo, không chặn
+
+Bấm **Index** trên một ý tưởng thì ngay trước khi upsert, vector vừa nhúng được đem đi
+truy vấn lại kho ý tưởng *của chính bạn*; cái nào vượt `DUP_THRESHOLD` (0.90, khai báo ở
+`src/vec/sync.ts`) sẽ về trong trường `duplicates` kèm tiêu đề và điểm giống.
+
+**Trước khi upsert, không phải sau.** Làm sau thì luôn ra rỗng: Vectorize mất khoảng một
+phút mới truy vấn được vector vừa ghi (mục 2 ở đầu README), nên ý tưởng vừa index sẽ chưa
+kịp thấy ai mà cũng chưa ai thấy nó.
+
+**Cảnh báo chứ không chặn.** Hàng đã nằm trong D1 rồi; chặn ở bước index chỉ để lại một ý
+tưởng vĩnh viễn không tìm được. Giữ hay bỏ là quyết định của người dùng, nên giao diện đưa
+danh sách kèm liên kết đi tới từng ý tưởng.
+
+**Giới hạn phải biết:** hai ý tưởng index cách nhau dưới một phút sẽ **không** phát hiện
+được nhau, vì cái trước chưa truy vấn được. Giao diện nói thẳng điều này trong khối cảnh
+báo thay vì để người dùng tưởng tính năng hỏng. Vì cùng lý do đó, kiểm tra trùng chỉ chạy
+ở nút Index của từng mục — nút đồng bộ hàng loạt xử lý tới 50 hàng một lượt, phần lớn
+chưa kịp nhìn thấy nhau, và 50 cảnh báo cùng lúc cũng không ai đọc.
+
+Lỗi ở bước kiểm tra trùng KHÔNG làm hỏng việc index: nó là tiện ích, còn đưa được vector
+lên Vectorize mới là việc người dùng vừa bấm nút để làm.
+
+### Kết hợp: gốc + biến thể + hook → một ý tưởng gốc MỚI
+
+`POST /api/ideas/combine` nhận `{idea_id, variant_id, hook_id?}` và **ghi một hàng `ideas`
+mới**, khác hẳn `GET /api/prompt` vốn chỉ ghép ra chuỗi rồi thôi. Ba cột
+`source_idea_id` / `source_variant_id` / `source_hook_id` (migration 0006) ghi lại xuất xứ.
+
+**POST chứ không GET** vì nó ghi dữ liệu — `SameSite=Lax` vẫn gửi cookie theo điều hướng
+GET ở cấp cao nhất, nên quy tắc "không endpoint GET nào được thay đổi dữ liệu"
+(`src/http/guard.ts`) là bắt buộc, không phải sở thích.
+
+Vài quyết định đáng nhớ:
+
+- **Dàn ý của ý tưởng mới là văn bản thuần**, không phải chuỗi prompt đã ghép. Nhãn cấu
+  trúc của mẫu ("## Style notes", "Vertical 9:16"…) là chỉ dẫn cho công cụ dựng video;
+  nhét vào đây thì mọi ý tưởng kết hợp mang chung một khối chữ và vector của chúng xúm
+  lại quanh một điểm. Hook đi vào dàn ý vì bảng `ideas` không còn cột hook từ 0005 — và
+  như vậy hook cũng thành một phần văn bản nhúng, đúng như mong đợi.
+- **`ON DELETE SET NULL` chứ không CASCADE** trên ba cột lineage: xoá ý tưởng nguồn không
+  được kéo theo ý tưởng đã kết hợp. Sau khi lưu nó là một ý tưởng độc lập; lineage chỉ là
+  ghi chú xuất xứ, không phải quan hệ sở hữu.
+- **Trạng thái luôn quay về `idea`**, kể cả khi ý tưởng nguồn đã quay xong và đăng rồi.
+- **Biến thể phải thuộc đúng ý tưởng gốc được chọn** — quy tắc kế thừa dàn ý (`{{script}}`)
+  chỉ có nghĩa khi hai thứ đó là một cặp. Muốn cho phép trộn chéo thì bỏ đúng một phép
+  kiểm tra trong `src/combine.ts`.
 
 ### Bảo trì định kỳ — không có cron, và đó là chủ ý
 
@@ -278,8 +381,9 @@ cần, còn ba việc kia thì không ai quan tâm miễn là chúng có xảy r
 `GET /api/health` trả `maintenance_last_run_at` và `maintenance_last_source`
 (`auto` hoặc `manual`) — không có lịch thì đó là cách duy nhất biết việc dọn còn diễn
 ra hay đã ngừng. Cố ý **không** có cờ "quá hạn": việc dọn bám theo lưu lượng nên mọi
-ngưỡng thời gian đều tùy tiện. Con số đáng theo dõi là `dirty_ideas` và `gc_pending` —
-chúng nói thẳng còn tồn đọng bao nhiêu.
+ngưỡng thời gian đều tùy tiện. Con số đáng theo dõi là `dirty_ideas`, `dirty_variants`,
+`dirty_hooks` và `gc_pending` — chúng nói thẳng còn tồn đọng bao nhiêu. Cả bốn dùng chung
+đúng những hằng `*_DIRTY_SQL` mà `/api/sync` dùng, nên hai endpoint không thể lệch nhau.
 
 Muốn quét toàn bộ ngay thay vì chờ lưu lượng:
 
@@ -297,6 +401,9 @@ functions/       Entrypoint Pages Functions, đúng 3 dòng
 src/             Toàn bộ logic. Không import gì từ Pages.
   router.ts      Một router Hono duy nhất — đây là chỗ nối cho tính di động
   worker.ts      Entrypoint Worker, chưa dùng, giữ sẵn để chuyển nền sau này
+  combine.ts     Kết hợp gốc + biến thể + hook thành ý tưởng gốc mới. Tách khỏi
+                 routes/ vì đây là nghiệp vụ chứ không phải chuyện HTTP — và vì
+                 tách ra thì kiểm thử được thẳng, không phải dựng phiên giả.
 migrations/      Schema D1 — chạy tuần tự, dựng được database mới từ số 0
 scripts/repair/  Script vá một lần cho database đã có, KHÔNG nằm trong chuỗi migration
 ```
@@ -375,7 +482,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 
 | Method | Path | Auth | Ghi chú |
 |---|---|:--:|---|
-| GET | `/api/health` | — | Kiểm tra D1 + binding; trả `dirty_ideas`, `gc_pending`, `maintenance_last_run_at` |
+| GET | `/api/health` | — | Kiểm tra D1 + binding; trả `dirty_ideas`, `dirty_variants`, `dirty_hooks`, `gc_pending`, `maintenance_last_run_at` |
 | POST | `/api/auth/register` | — | `{email, password, display_name?}` |
 | POST | `/api/auth/login` | — | `{email, password}` |
 | POST | `/api/auth/logout` | ✓ | |
@@ -386,12 +493,16 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | POST | `/api/auth/revoke-all` | ✓ | Giữ lại phiên hiện tại |
 | GET | `/api/ideas` | ✓ | Lọc + tìm từ khoá, phân trang keyset |
 | POST | `/api/ideas` | ✓ | **Chỉ ghi D1**, không nhúng, không đụng Vectorize |
+| POST | `/api/ideas/:id/index` | ✓ | Index đúng ý tưởng đó; trả `duplicates` nếu thấy ý tưởng gần trùng |
+| POST | `/api/ideas/combine` | ✓ | `{idea_id, variant_id, hook_id?, title?}` → **ý tưởng gốc MỚI** có lineage |
 | GET · POST | `/api/hook-categories` | ✓ | Danh mục hook; trùng tên trả 400 |
 | PATCH · DELETE | `/api/hook-categories/:id` | ✓ | Xoá danh mục KHÔNG xoá hook bên trong |
 | GET · POST | `/api/hooks` | ✓ | `?category=<id>` hoặc `?category=none` |
 | PATCH · DELETE | `/api/hooks/:id` | ✓ | |
+| POST | `/api/hooks/:id/index` | ✓ | Index đúng hook đó |
 | GET · POST | `/api/ideas/:id/variants` | ✓ | Biến thể của một ý tưởng gốc |
 | PATCH · DELETE | `/api/variants/:id` | ✓ | |
+| POST | `/api/variants/:id/index` | ✓ | Index đúng biến thể đó |
 | GET | `/api/prompt` | ✓ | `?variant_id=&hook_id=` — hook để trống vẫn ghép được |
 | GET · PUT · DELETE | `/api/prompt-template` | ✓ | Đọc / lưu / đưa về mặc định |
 | GET · PATCH · DELETE | `/api/ideas/:id` | ✓ | 404 khi không phải của bạn |
@@ -400,8 +511,8 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | GET | `/api/search` | ✓ | Ngữ nghĩa; lùi về từ khoá khi AI/Vectorize hỏng |
 | GET | `/api/recommendations` | ✓ | `basis: likes \| cold_start` |
 | GET | `/api/tags` | ✓ | |
-| GET | `/api/sync` | ✓ | Đếm ý tưởng của chính mình chưa được index |
-| POST | `/api/reindex` | ✓ | Đồng bộ cho chính mình, theo lô 50 |
+| GET | `/api/sync` | ✓ | `dirty` (tổng) + `by_type` cho ý tưởng / biến thể / hook |
+| POST | `/api/reindex` | ✓ | Đồng bộ cả ba kho cho chính mình, lô 50 mỗi loại |
 | POST | `/api/admin/reindex` | `ADMIN_TOKEN` | `{scope: dirty\|all\|user}` — cũng là công cụ đổi model |
 | POST | `/api/admin/maintenance` | `ADMIN_TOKEN` | Quét toàn bộ một lần: dọn phiên, rate limit, vector mồ côi, đối soát index |
 
@@ -443,8 +554,17 @@ nếu thế thì ép sáng trên máy đang để chế độ tối sẽ ra bi�
 |---|---|
 | Production | https://cf-videa.pages.dev — `env: production`, D1 `videa-db`, index `videa-ideas` |
 | Preview (nhánh này) | https://claude-account-management-sh.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
-Cả hai D1 và cả hai Vectorize index đã được dọn sạch dữ liệu kiểm thử; index có đủ 4
-metadata index và chưa có vector nào, nên tài khoản đầu tiên bạn tạo sẽ được index đúng.
+Cả hai D1 và cả hai Vectorize index đã được dọn sạch dữ liệu kiểm thử.
+
+⚠️ **Trước lần deploy kế tiếp phải thêm metadata index `type`** cho cả hai Vectorize index
+(xem "Khởi tạo hạ tầng"), rồi poll cho đủ **5** property. Từ nay `queryIdeas` lọc
+`type = 'idea'`, nên vector nào không mang `type` sẽ bị loại khỏi kết quả — im lặng, không
+lỗi. Index đang rỗng nên không có gì để mất; nếu đã có dữ liệu thì chạy
+`POST /api/admin/reindex {"scope":"all"}` một lượt sau khi metadata index sẵn sàng.
+
+Hai migration mới (`0006`, `0007`) chạy bằng `npm run db:remote` như thường lệ. `0007` cố ý
+đặt lại `embedded_hash` của mọi ý tưởng về NULL — đó chính là cách đánh dấu "cần index lại
+để mang `type`".
 
 ## Kiểm thử
 
@@ -454,7 +574,17 @@ metadata index và chưa có vector nào, nên tài khoản đầu tiên bạn t
   *im lặng và nguy hiểm*: băm/kiểm tra mật khẩu, vòng đời phiên, **ma trận cách ly đa người
   dùng**, và phần kế toán đồng bộ Vectorize (dùng Vectorize giả trong bộ nhớ).
 - **`npm run smoke`** kiểm tra toàn bộ luồng HTTP bằng curl, chạy được cả với `pages dev`
-  lẫn với bản đã deploy.
+  lẫn với bản đã deploy. Vectorize **không chạy được ở local** (`wrangler pages dev` báo
+  "Binding VEC needs to be run remotely"), nên phần index tự dò: chạy với bản đã deploy thì
+  khẳng định index thật sự xong, chạy local thì khẳng định *hợp đồng khi hỏng* — endpoint
+  vẫn trả 200, nói thẳng `indexed:false`, và hàng **ở lại** trạng thái bẩn. Báo đã xong
+  trong khi chưa xong mới là thứ không chấp nhận được.
+- **Hồi quy đáng giá nhất** nằm ở `test/sync.test.ts`: dựng ba ý tưởng bẩn, bấm index đúng
+  một cái, rồi khẳng định hai cái kia VẪN bẩn. Đó là cái bẫy `reconcile(limit=1)` mô tả ở
+  mục "Index vector là thao tác THỦ CÔNG".
+- `test/dup.test.ts` khẳng định về *hành vi* của việc kiểm tra trùng — trùng thì báo, khác
+  thì không, và **không bao giờ báo qua tài khoản khác** (một cảnh báo trùng làm lộ tiêu
+  đề) — chứ không khẳng định một điểm số cụ thể.
 - Cố ý **không** test chất lượng embedding hay khẳng định điểm tương đồng cụ thể — đó là
   thuộc tính của một model được host, có thể đổi bất cứ lúc nào. Chỉ khẳng định về *thứ hạng*
   và về *cách ly*.

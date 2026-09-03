@@ -52,6 +52,16 @@ export interface IdeaRow {
   status: IdeaStatus;
   visibility: Visibility;
   lang: string;
+  /**
+   * Những thứ KHÔNG được xuất hiện trong video. Cố ý nằm ngoài văn bản đem đi nhúng
+   * (xem src/content.ts): nhúng một danh sách cấm thì embedding đọc dấu trừ thành dấu
+   * cộng và ý tưởng sẽ khớp với đúng thứ nó muốn tránh.
+   */
+  negative_prompt: string;
+  /** Xuất xứ khi ý tưởng này được sinh ra từ chức năng kết hợp. NULL với ý tưởng tự viết. */
+  source_idea_id: string | null;
+  source_variant_id: string | null;
+  source_hook_id: string | null;
   content_hash: string;
   embedded_hash: string | null;
   /** Chữ ký metadata tại lần upsert gần nhất — xem migrations/0004. */
@@ -72,6 +82,10 @@ export interface IdeaDto {
   niche: string;
   status: IdeaStatus;
   visibility: Visibility;
+  negative_prompt: string;
+  source_idea_id: string | null;
+  source_variant_id: string | null;
+  source_hook_id: string | null;
   tags: string[];
   liked: boolean;
   /** Số biến thể — hiển thị trên thẻ ý tưởng. */
