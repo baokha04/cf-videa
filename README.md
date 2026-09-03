@@ -368,6 +368,17 @@ lên Vectorize mới là việc người dùng vừa bấm nút để làm.
 mới**, khác hẳn `GET /api/prompt` vốn chỉ ghép ra chuỗi rồi thôi. Ba cột
 `source_idea_id` / `source_variant_id` / `source_hook_id` (migration 0006) ghi lại xuất xứ.
 
+**Có hai lối vào cùng một endpoint.** Khối kết hợp nằm ở cả trang một ý tưởng
+(`/idea`, ý tưởng gốc là trang đang mở) lẫn trang gợi ý (`/recommend`, chọn ý tưởng từ
+toàn kho qua `/api/ideas/titles`). Trang gợi ý là nơi bạn vừa nhìn thấy một ý tưởng cũ
+đáng làm lại, nên ghép được ngay tại đó; tạo xong thì **ở lại trang** kèm liên kết tới ý
+tưởng mới, để ghép tiếp từ cùng danh sách mà không mất chỗ đang đọc.
+
+Cả hai nơi đều nạp lại ô biến thể khi đổi ý tưởng: biến thể thuộc về một ý tưởng, và
+`src/combine.ts` từ chối cặp không khớp bằng `variant_mismatch` — chặn ở giao diện thì
+người dùng không bao giờ phải gặp lỗi 400 đó. Ý tưởng chưa có biến thể nào thì hai nút bị
+vô hiệu hoá **kèm lý do**, không để nút chết câm.
+
 **POST chứ không GET** vì nó ghi dữ liệu — `SameSite=Lax` vẫn gửi cookie theo điều hướng
 GET ở cấp cao nhất, nên quy tắc "không endpoint GET nào được thay đổi dữ liệu"
 (`src/http/guard.ts`) là bắt buộc, không phải sở thích.
@@ -545,6 +556,17 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 ## Giao diện
 
 **HTML tĩnh + ES module thuần, không có bước build** — xem phần Frontend ở trên.
+
+**Nút "Index" trong `ideaCard` có trình xử lý dùng chung ở `ui.js` (`bindIndexButtons`).**
+Bắt buộc phải vậy: `ideaCard` render ra ở BỐN trang — `/app`, `/search`, `/recommend` và
+mục "Ý tưởng tương tự" của `/idea` — và đã từng có giai đoạn chỉ `/app` viết trình xử lý,
+nên ba trang kia hiện một cái nút bấm vào không có gì xảy ra. Nút vẫn có nghĩa ở cả ba:
+`/search` lùi về tìm từ khoá và `/recommend` lùi về `cold_start` đều đọc thẳng D1 nên trả
+về được ý tưởng chưa index.
+
+Sau khi index xong, hàm này **cập nhật đúng thẻ vừa bấm tại chỗ** chứ không tải lại danh
+sách — trên `/search` một lần tải lại là một lần nhúng câu truy vấn, tốn lời gọi Workers AI
+và ăn vào rate limit; trên `/recommend` thì danh sách nhảy làm mất chỗ đang đọc.
 
 Thanh điều hướng có đúng ba kho — **Ý tưởng gốc**, **Biến thể**, **Hook** — rồi mới tới Tìm
 kiếm, Gợi ý và Tài khoản.

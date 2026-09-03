@@ -2,6 +2,9 @@
 // MỌI giá trị do người dùng nhập đều phải đi qua esc() trước khi ghép vào HTML.
 // CSP nghiêm ngặt trong public/_headers là lớp chắn cuối, không phải lớp đầu.
 
+// api.js KHÔNG import ngược lại ui.js, nên chiều phụ thuộc này không tạo vòng lặp.
+import { post } from './api.js';
+
 export function esc(v) {
   return String(v ?? '')
     .replaceAll('&', '&amp;')
@@ -85,6 +88,57 @@ export function ideaCard(idea) {
       <button class="link" type="button" data-index="${esc(idea.id)}">Index</button>
     </div>
   </article>`;
+}
+
+/**
+ * Gắn xử lý cho nút "Index" nằm trong ideaCard.
+ *
+ * PHẢI ở đây chứ không phải trong từng trang: ideaCard dùng chung cho bốn trang (/app,
+ * /search, /recommend và mục "Ý tưởng tương tự" của /idea), và trước đây chỉ /app viết
+ * trình xử lý — ba trang kia render ra một cái nút bấm vào không có gì xảy ra.
+ *
+ * Cập nhật ĐÚNG thẻ vừa bấm tại chỗ, cố ý không tải lại cả danh sách: trên /search một
+ * lần tải lại là một lần nhúng câu truy vấn, tốn lời gọi Workers AI và ăn vào rate
+ * limit; trên /recommend thì danh sách nhảy làm mất chỗ đang đọc.
+ *
+ * onIndexed (tuỳ chọn) dành cho trang còn việc khác phải làm sau đó — /app dùng nó để
+ * cập nhật lại số đếm trên thanh đồng bộ.
+ */
+export function bindIndexButtons(container, { onMessage, onIndexed } = {}) {
+  container.addEventListener('click', async (e) => {
+    const btn = e.target;
+    const id = btn?.dataset?.index;
+    if (!id) return;
+
+    const card = btn.closest('.card');
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = '…';
+    try {
+      const r = await post(`/api/ideas/${encodeURIComponent(id)}/index`);
+      if (r.duplicates?.length) {
+        const names = r.duplicates.map((d) => d.title).join(', ');
+        onMessage?.(`Đã index. Có thể trùng với: ${names}. Mở ý tưởng để xem chi tiết.`, 'note');
+      } else {
+        onMessage?.(r.indexed
+          ? 'Đã index. Tìm kiếm ngữ nghĩa thấy được sau khoảng một phút nữa.'
+          : 'Index chưa xong, thử lại sau.', r.indexed ? 'ok' : 'note');
+      }
+
+      if (r.indexed) {
+        card?.querySelector('.chip.pending')?.remove();
+        btn.textContent = 'Đã index';
+      } else {
+        btn.textContent = label;
+        btn.disabled = false;
+      }
+      await onIndexed?.();
+    } catch (err) {
+      onMessage?.(err.message);
+      btn.textContent = label;
+      btn.disabled = false;
+    }
+  });
 }
 
 export function renderList(container, items, emptyText) {
