@@ -52,21 +52,8 @@ export function fmtDate(ms) {
   });
 }
 
-const KIND_LABEL = {
-  origin: 'Ý tưởng gốc',
-  variant: 'Biến thể',
-};
-
-export const kindLabel = (k) => KIND_LABEL[k] ?? k;
-
-/**
- * Một thẻ ý tưởng. Trả về chuỗi HTML đã escape đầy đủ.
- *
- * `opts.sync` gắn nút đồng bộ index của RIÊNG thẻ này; `opts.manage` gắn thêm nút
- * Sửa và Xoá. Cả hai mặc định tắt: thẻ còn xuất hiện trong kết quả tìm kiếm và danh
- * sách gợi ý, nơi những nút đó chỉ làm nhiễu.
- */
-export function ideaCard(idea, opts = {}) {
+/** Một thẻ ý tưởng. Trả về chuỗi HTML đã escape đầy đủ. */
+export function ideaCard(idea) {
   const tags = idea.tags
     .map((t) => `<span class="chip">#${esc(t)}</span>`)
     .join('');
@@ -79,55 +66,26 @@ export function ideaCard(idea, opts = {}) {
     ? ''
     : '<span class="chip pending" title="Chưa nằm trong tìm kiếm ngữ nghĩa">chưa index</span>';
   const liked = idea.liked ? '<span class="chip">♥ đã thích</span>' : '';
-  // Chỉ dán nhãn cho biến thể. Ý tưởng gốc là mặc định, dán nhãn cho cả hai chỉ làm
-  // mọi thẻ dài ra mà không thêm thông tin nào.
-  const kind =
-    idea.kind === 'variant' ? '<span class="chip variant">biến thể</span>' : '';
-  const variants =
-    idea.variant_count > 0
-      ? `<span class="chip">${idea.variant_count} biến thể</span>`
-      : '';
-  const hooks =
-    idea.hooks && idea.hooks.length > 0
-      ? `<span class="chip">${idea.hooks.length} hook</span>`
-      : '';
-  // data-indexed để nút biết mình đang là "đồng bộ" hay "đồng bộ lại" mà không phải
-  // gọi lại API chỉ để hỏi một trạng thái đã nằm sẵn trong dữ liệu vừa render.
-  const syncBtn = opts.sync
-    ? `<button type="button" class="sync-one" data-id="${esc(idea.id)}"
-               data-indexed="${idea.indexed ? '1' : '0'}">
-         ${idea.indexed ? 'Đồng bộ lại' : 'Đồng bộ index'}
-       </button>`
+  const variants = idea.variant_count > 0
+    ? `<span class="chip">${idea.variant_count} biến thể</span>`
     : '';
-  // Sửa là một liên kết mở thẳng trang ý tưởng, không phải sửa tại chỗ: một ý tưởng
-  // có cả chục trường, nên sửa tại chỗ chỉ vài trường là một lời hứa nửa vời.
-  const manageBtns = opts.manage
-    ? `<a class="btn-link" href="/idea?id=${encodeURIComponent(idea.id)}"><button type="button">Sửa</button></a>
-       <button type="button" class="delete-one danger" data-id="${esc(idea.id)}"
-               data-title="${esc(idea.title)}">Xoá</button>`
-    : '';
-  const actions =
-    syncBtn || manageBtns
-      ? `<div class="idea-actions">${manageBtns}${syncBtn}</div>`
-      : '';
 
   return `<article class="card idea">
     <h3><a href="/idea?id=${encodeURIComponent(idea.id)}">${esc(idea.title)}</a></h3>
-    ${idea.hook ? `<p class="hook">${esc(idea.hook)}</p>` : ''}
+    ${idea.script_outline ? `<p class="hook">${esc(idea.script_outline.slice(0, 140))}</p>` : ''}
     <div class="meta">
       <span class="chip">${esc(platformLabel(idea.platform))}</span>
       <span class="chip">${esc(statusLabel(idea.status))}</span>
       ${idea.niche ? `<span class="chip">${esc(idea.niche)}</span>` : ''}
-      ${kind}${variants}${hooks}${tags}${liked}${score}${pending}
+      ${variants}${tags}${liked}${score}${pending}
     </div>
-    ${actions}
   </article>`;
 }
 
-export function renderList(container, items, emptyText, opts = {}) {
+export function renderList(container, items, emptyText) {
   if (!items || items.length === 0) {
     container.innerHTML = `<p class="empty">${esc(emptyText)}</p>`;
     return;
   }
-  container.innerHTML = items.map((idea) => ideaCard(idea, opts)).join('');
+  container.innerHTML = items.map(ideaCard).join('');
 }

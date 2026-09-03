@@ -3,20 +3,16 @@ import { migrate, testEnv } from './helpers';
 import { hashPassword } from '../src/auth/password';
 import * as usersDb from '../src/db/users';
 import * as ideasDb from '../src/db/ideas';
-import { buildEmbedText, contentHash, MODEL_ID } from '../src/vec/embeddings';
+import * as variantsDb from '../src/db/variants';
+import { contentHash, MODEL_ID } from '../src/vec/embeddings';
+import { ideaEmbedText } from '../src/content';
 
 const BASE = {
   title: 'Tiêu đề',
-  hook: '',
   script_outline: '',
-  source_idea: '',
-  prompt_recipe: '',
-  negative_prompt: '',
   platform: 'tiktok' as const,
   niche: '',
   status: 'idea' as const,
-  kind: 'origin' as const,
-  parent_id: null,
 };
 
 async function mkUser() {
@@ -50,13 +46,18 @@ describe('truy vấn ý tưởng', () => {
     expect(rows.map((r) => r.title)).toEqual(['Nấu ăn nhanh']);
   });
 
-  it('tìm từ khoá khớp trên nhiều cột', async () => {
-    await ideasDb.create(testEnv(), uid, { ...BASE, title: 'A', hook: 'cà phê sáng' }, 'h1');
-    await ideasDb.create(testEnv(), uid, { ...BASE, title: 'B', script_outline: 'cà phê đá' }, 'h2');
-    await ideasDb.create(testEnv(), uid, { ...BASE, title: 'C', niche: 'cà phê' }, 'h3');
-    await ideasDb.create(testEnv(), uid, { ...BASE, title: 'cà phê D' }, 'h4');
+  it('tìm từ khoá khớp trên nhiều cột, KỂ CẢ trong biến thể', async () => {
+    await ideasDb.create(testEnv(), uid, { ...BASE, title: 'A', script_outline: 'cà phê đá' }, 'h1');
+    await ideasDb.create(testEnv(), uid, { ...BASE, title: 'B', niche: 'cà phê' }, 'h2');
+    await ideasDb.create(testEnv(), uid, { ...BASE, title: 'cà phê C' }, 'h3');
+    // Ý tưởng thứ tư không hề nhắc "cà phê" ở bảng ideas — chỉ ở biến thể của nó.
+    // Người dùng thường nhớ góc triển khai chứ không nhớ tiêu đề gốc.
+    const d = await ideasDb.create(testEnv(), uid, { ...BASE, title: 'D' }, 'h4');
+    await variantsDb.create(testEnv(), uid, d.id, {
+      title: 'Phiên bản cà phê', angle: '', script_outline: '', sort_order: 0,
+    });
     const { rows } = await ideasDb.list(testEnv(), uid, { q: 'cà phê' }, 50, null);
-    expect(rows).toHaveLength(4);
+    expect(rows.map((r) => r.title).sort()).toEqual(['A', 'B', 'D', 'cà phê C']);
   });
 
   it('ký tự đại diện của LIKE được escape, không bị hiểu là wildcard', async () => {
@@ -109,64 +110,25 @@ describe('truy vấn ý tưởng', () => {
   });
 });
 
-/** Chỉ các trường THỰC SỰ đi vào văn bản nhúng, cộng hai trường cố ý đứng ngoài. */
-const EMBED_BASE = {
-  title: 'A',
-  hook: 'B',
-  script_outline: 'C',
-  source_idea: 'E',
-  niche: 'D',
-  platform: 'tiktok' as const,
-  prompt_recipe: 'công thức tái dùng',
-  negative_prompt: 'đừng dùng chữ to',
-};
-
 describe('hash nội dung dùng cho đồng bộ Vectorize', () => {
   it('cùng nội dung cho cùng hash', async () => {
-    const idea = EMBED_BASE;
-    expect(await contentHash(buildEmbedText(idea, ['x'])))
-      .toBe(await contentHash(buildEmbedText(idea, ['x'])));
+    const idea = { title: 'A', script_outline: 'C', niche: 'D', platform: 'tiktok' as const };
+    expect(await contentHash(ideaEmbedText(idea, ['x'], [])))
+      .toBe(await contentHash(ideaEmbedText(idea, ['x'], [])));
   });
 
   it('đổi bất kỳ trường nào ảnh hưởng embedding thì hash đổi theo', async () => {
-    const base = EMBED_BASE;
-    const h0 = await contentHash(buildEmbedText(base, ['x']));
+    const base = { title: 'A', script_outline: 'C', niche: 'D', platform: 'tiktok' as const };
+    const h0 = await contentHash(ideaEmbedText(base, ['x'], []));
     for (const variant of [
       { ...base, title: 'A2' },
-      { ...base, hook: 'B2' },
-      { ...base, script_outline: 'C2' },
-      { ...base, source_idea: 'E2' },
+            { ...base, script_outline: 'C2' },
       { ...base, niche: 'D2' },
       { ...base, platform: 'reels' as const },
     ]) {
-      expect(await contentHash(buildEmbedText(variant, ['x']))).not.toBe(h0);
+      expect(await contentHash(ideaEmbedText(variant, ['x'], []))).not.toBe(h0);
     }
-    expect(await contentHash(buildEmbedText(base, ['y']))).not.toBe(h0);
-    // Danh mục video hook cũng nằm trong văn bản nhúng: thêm hook là ý tưởng bẩn lại.
-    expect(await contentHash(buildEmbedText(base, ['x'], ['hook mới']))).not.toBe(h0);
-  });
-
-  it('thêm trường mới KHÔNG làm đổi hash của ý tưởng cũ để lại', async () => {
-    // Ý tưởng có trước migration 0005 có source_idea rỗng. Nếu văn bản nhúng thay
-    // đổi với chúng thì mọi hàng đã index bỗng thành bẩn và phải nhúng lại toàn bộ —
-    // một hoá đơn Workers AI không ai yêu cầu. Chuỗi phải khớp từng ký tự.
-    const legacy = { title: 'A', hook: 'B', script_outline: 'C', niche: 'D', platform: 'tiktok' as const };
-    expect(buildEmbedText({ ...legacy, source_idea: '' }, ['x'], []))
-      .toBe('A\nB\nC\nNiche: D\nNền tảng: tiktok\nTags: x');
-  });
-
-  it('công thức prompt và negative prompt KHÔNG đi vào văn bản nhúng', async () => {
-    // Công thức là văn bản TÁI DÙNG giống hệt nhau giữa nhiều ý tưởng, còn negative
-    // prompt là thứ phải TRÁNH — đem nhúng cả hai thì "ý tưởng tương tự" hỏng.
-    const text = buildEmbedText(
-      { ...EMBED_BASE, source_idea: 'ý tưởng thô' },
-      ['x'],
-      ['hook 1'],
-    );
-    expect(text).toContain('ý tưởng thô');
-    expect(text).toContain('hook 1');
-    expect(text).not.toContain('công thức');
-    expect(text).not.toContain('đừng dùng');
+    expect(await contentHash(ideaEmbedText(base, ['y'], []))).not.toBe(h0);
   });
 
   it('hash gắn với MODEL_ID nên đổi model là mọi hàng tự động thành bẩn', async () => {

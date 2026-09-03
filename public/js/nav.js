@@ -12,6 +12,7 @@ export async function mountNav(current) {
 
   const links = [
     ['/app', 'Kho ý tưởng'],
+    ['/hooks', 'Hook'],
     ['/search', 'Tìm kiếm'],
     ['/recommend', 'Gợi ý'],
     ['/account', 'Tài khoản'],

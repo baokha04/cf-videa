@@ -25,9 +25,6 @@ export const LIMITS = {
   registerIp: { max: 5, windowSec: 3600 },
   // Giới hạn này bảo vệ cả hạn mức Workers AI, không chỉ chống lạm dụng.
   searchUser: { max: 30, windowSec: 60 },
-  // Nút đồng bộ nằm trên TỪNG thẻ ý tưởng, nên nó dễ bị bấm liên tục hơn hẳn nút
-  // đồng bộ cả kho. Mỗi lần bấm có thể tốn một lời nhúng, nên phải có trần.
-  syncIdea: { max: 40, windowSec: 60 },
 } satisfies Record<string, Limit>;
 
 /** Tăng bộ đếm và ném lỗi 429 nếu vượt. */

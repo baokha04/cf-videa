@@ -5,6 +5,8 @@ import * as usersDb from '../src/db/users';
 import * as ideasDb from '../src/db/ideas';
 import * as likesDb from '../src/db/likes';
 import { setIdeaTags, listTags, tagsForIdeas } from '../src/db/tags';
+import * as hooksDb from '../src/db/hooks';
+import * as variantsDb from '../src/db/variants';
 
 /**
  * Ma trận cách ly đa người dùng. Đây là bất biến bảo mật quan trọng nhất của app:
@@ -14,16 +16,10 @@ import { setIdeaTags, listTags, tagsForIdeas } from '../src/db/tags';
 
 const INPUT = {
   title: 'Bí mật của A',
-  hook: 'hook của A',
   script_outline: 'kịch bản của A',
-  source_idea: 'ý tưởng gốc của A',
-  prompt_recipe: 'công thức của A',
-  negative_prompt: 'tránh của A',
   platform: 'tiktok' as const,
   niche: 'ẩm thực',
   status: 'idea' as const,
-  kind: 'origin' as const,
-  parent_id: null,
 };
 
 async function mkUser(email: string) {
@@ -120,5 +116,93 @@ describe('cách ly giữa các tài khoản', () => {
     await setIdeaTags(testEnv(), B.id, ideaOfB.id, ['mẹo']);
     const { rows } = await ideasDb.list(testEnv(), B.id, { tag: 'mẹo' }, 50, null);
     expect(rows.map((r) => r.id)).toEqual([ideaOfB.id]);
+  });
+});
+
+describe('cách ly hooks và biến thể', () => {
+  let A: { id: string };
+  let B: { id: string };
+
+  beforeEach(async () => {
+    await migrate();
+    await testEnv().DB.prepare('DELETE FROM users').run();
+    A = await mkUser('a@example.com');
+    B = await mkUser('b@example.com');
+  });
+
+  it('B không đọc/sửa/xoá được hook của A', async () => {
+    const h = await hooksDb.createHook(testEnv(), A.id, {
+      text: 'Hook bí mật của A', note: '', category_id: null,
+    });
+    expect(await hooksDb.getHook(testEnv(), B.id, h!.id)).toBeNull();
+    expect(await hooksDb.updateHook(testEnv(), B.id, h!.id, {
+      text: 'chiếm đoạt', note: '', category_id: null,
+    })).toBe(false);
+    expect(await hooksDb.deleteHook(testEnv(), B.id, h!.id)).toBe(false);
+    expect((await hooksDb.getHook(testEnv(), A.id, h!.id))?.text).toBe('Hook bí mật của A');
+  });
+
+  it('danh mục hook không lẫn giữa hai tài khoản', async () => {
+    await hooksDb.createCategory(testEnv(), A.id, 'Câu hỏi', 0);
+    expect(await hooksDb.listCategories(testEnv(), B.id)).toHaveLength(0);
+    // Cùng tên vẫn tạo được cho người khác — UNIQUE là (user_id, name).
+    expect(await hooksDb.createCategory(testEnv(), B.id, 'Câu hỏi', 0)).not.toBeNull();
+  });
+
+  it('KHÔNG gán được hook của mình vào danh mục của người khác', async () => {
+    // Khoá ngoại chỉ bảo đảm danh mục TỒN TẠI, không bảo đảm nó là của ai. Nếu chỗ
+    // này lọt thì hook của B sẽ hiện trong danh mục của A.
+    const catA = await hooksDb.createCategory(testEnv(), A.id, 'Của A', 0);
+    expect(await hooksDb.createHook(testEnv(), B.id, {
+      text: 'x', note: '', category_id: catA!.id,
+    })).toBeNull();
+
+    const hookB = await hooksDb.createHook(testEnv(), B.id, {
+      text: 'y', note: '', category_id: null,
+    });
+    expect(await hooksDb.updateHook(testEnv(), B.id, hookB!.id, {
+      text: 'y', note: '', category_id: catA!.id,
+    })).toBe(false);
+  });
+
+  it('xoá danh mục KHÔNG xoá hook, chúng rơi về nhóm chưa phân loại', async () => {
+    const cat = await hooksDb.createCategory(testEnv(), A.id, 'Tạm', 0);
+    const h = await hooksDb.createHook(testEnv(), A.id, {
+      text: 'giữ lại tôi', note: '', category_id: cat!.id,
+    });
+    await hooksDb.deleteCategory(testEnv(), A.id, cat!.id);
+    const fresh = await hooksDb.getHook(testEnv(), A.id, h!.id);
+    expect(fresh?.text).toBe('giữ lại tôi');
+    expect(fresh?.category_id).toBeNull();
+  });
+
+  it('B không tạo được biến thể trên ý tưởng của A', async () => {
+    const ideaA = await ideasDb.create(testEnv(), A.id, INPUT, 'ha');
+    expect(await variantsDb.create(testEnv(), B.id, ideaA.id, {
+      title: 'chiếm đoạt', angle: '', script_outline: '', sort_order: 0,
+    })).toBeNull();
+  });
+
+  it('B không đọc/sửa/xoá được biến thể của A', async () => {
+    const ideaA = await ideasDb.create(testEnv(), A.id, INPUT, 'ha');
+    const v = await variantsDb.create(testEnv(), A.id, ideaA.id, {
+      title: 'Biến thể của A', angle: '', script_outline: '', sort_order: 0,
+    });
+    expect(await variantsDb.getById(testEnv(), B.id, v!.id)).toBeNull();
+    expect(await variantsDb.update(testEnv(), B.id, v!.id, {
+      title: 'x', angle: '', script_outline: '', sort_order: 0,
+    })).toBe(false);
+    expect(await variantsDb.remove(testEnv(), B.id, v!.id)).toBe(false);
+    expect(await variantsDb.listForIdea(testEnv(), B.id, ideaA.id)).toHaveLength(0);
+  });
+
+  it('xoá ý tưởng thì biến thể bị xoá theo', async () => {
+    const ideaA = await ideasDb.create(testEnv(), A.id, INPUT, 'ha');
+    await variantsDb.create(testEnv(), A.id, ideaA.id, {
+      title: 'v', angle: '', script_outline: '', sort_order: 0,
+    });
+    await ideasDb.remove(testEnv(), A.id, ideaA.id);
+    const { results } = await testEnv().DB.prepare('SELECT id FROM idea_variants').all();
+    expect(results).toHaveLength(0);
   });
 });

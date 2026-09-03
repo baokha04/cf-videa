@@ -1,4 +1,4 @@
-import type { Env, IdeaRow } from '../types';
+import type { Env } from '../types';
 import { sha256Hex } from '../util/hash';
 
 /**
@@ -12,45 +12,7 @@ export const MODEL_ID = '@cf/baai/bge-m3';
 export const DIMENSIONS = 1024;
 
 /** Giới hạn độ dài để một ý tưởng dài không nuốt trọn cửa sổ ngữ cảnh. */
-const MAX_EMBED_CHARS = 4000;
-
-export type EmbedFields = Pick<
-  IdeaRow,
-  'title' | 'hook' | 'script_outline' | 'source_idea' | 'niche' | 'platform'
->;
-
-/**
- * Văn bản đem đi nhúng. Một nguồn sự thật duy nhất: cả lúc ghi, lúc đối soát và
- * lúc tính content_hash đều đi qua hàm này, nên hash không bao giờ lệch với vector.
- *
- * HAI TRƯỜNG CỐ Ý ĐỨNG NGOÀI, và đây là quyết định chứ không phải bỏ sót:
- *
- *  - `prompt_recipe` là công thức TÁI DÙNG — cùng một công thức được dán lại cho cả
- *    chục ý tưởng. Đem nhúng thì phần văn bản giống hệt nhau đó lấn át phần thật sự
- *    phân biệt các ý tưởng, và "ý tưởng tương tự" biến thành "cùng dùng một công
- *    thức" — đúng thứ vô dụng nhất.
- *  - `negative_prompt` liệt kê thứ KHÔNG được xuất hiện. Nhúng nó vào làm ý tưởng
- *    nằm gần chính những thứ nó từ chối, tức là dấu trừ bị đọc thành dấu cộng.
- *
- * Cả hai vẫn tìm lại được bằng tìm từ khoá (LIKE) ở src/db/ideas.ts — nên chúng
- * không biến mất khỏi tìm kiếm, chỉ không làm nhiễu không gian vector.
- *
- * `hooks` là danh mục video hook: mỗi hook là một cách mở đầu RIÊNG của ý tưởng
- * này, nên nó là tín hiệu phân biệt thật và có mặt trong văn bản nhúng.
- */
-export function buildEmbedText(idea: EmbedFields, tags: string[], hooks: string[] = []): string {
-  const parts = [
-    idea.title,
-    idea.hook,
-    idea.script_outline,
-    idea.source_idea ? `Ý tưởng gốc: ${idea.source_idea}` : '',
-    hooks.length ? `Hook: ${hooks.join(' | ')}` : '',
-    idea.niche ? `Niche: ${idea.niche}` : '',
-    `Nền tảng: ${idea.platform}`,
-    tags.length ? `Tags: ${tags.join(', ')}` : '',
-  ].filter(Boolean);
-  return parts.join('\n').slice(0, MAX_EMBED_CHARS);
-}
+export const MAX_EMBED_CHARS = 4000;
 
 /**
  * Gộp MODEL_ID vào hash là chi tiết quan trọng: đổi model thì mọi content_hash

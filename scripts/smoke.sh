@@ -104,7 +104,7 @@ R=$(curl -sS -m 30 -X POST "$BASE/api/ideas" -H 'Content-Type: text/plain' \
 expect "POST sai Content-Type bị từ chối" 400 "$(code "$R")"
 
 head_ "4. CRUD ý tưởng"
-IDEA='{"title":"5 mẹo quay video bằng điện thoại","hook":"Bạn đang cầm máy sai cách!","script_outline":"1. Khoá nét 2. Ánh sáng cửa sổ 3. Quay ngang","platform":"tiktok","niche":"làm phim","tags":["quay phim","mẹo"]}'
+IDEA='{"title":"5 mẹo quay video bằng điện thoại","script_outline":"1. Khoá nét 2. Ánh sáng cửa sổ 3. Quay ngang","platform":"tiktok","niche":"làm phim","tags":["quay phim","mẹo"]}'
 R=$(req POST /api/ideas "$IDEA" "$TOKEN_A")
 expect "POST /api/ideas trả 201" 201 "$(code "$R")"
 IDEA_ID=$(jqr "$(body "$R")" idea.id)
@@ -139,120 +139,55 @@ expect "like lần hai vẫn 204 (idempotent)" 204 "$(code "$R")"
 R=$(req GET /api/tags "" "$TOKEN_A")
 expect "GET /api/tags trả 200" 200 "$(code "$R")"
 
-head_ "4b. Ý tưởng gốc, công thức prompt, danh mục hook và biến thể"
-ORIGIN='{"title":"Series review quán cà phê","hook":"Quán này không dành cho bạn",
- "source_idea":"Ghi lại lúc 2 giờ sáng: đi review quán theo kiểu phim tài liệu",
- "prompt_recipe":"máy quay lia chậm, ánh sáng cửa sổ, tông ấm",
- "negative_prompt":"không chữ to, không nhạc trend",
- "platform":"reels","niche":"ẩm thực","tags":["cà phê"],
- "hooks":["Quán này không dành cho bạn","3 giây đầu quyết định tất cả"]}'
-R=$(req POST /api/ideas "$ORIGIN" "$TOKEN_A")
-expect "tạo ý tưởng gốc kèm ba trường mới trả 201" 201 "$(code "$R")"
-ORIGIN_ID=$(jqr "$(body "$R")" idea.id)
-expect "ý tưởng gốc được lưu nguyên văn" \
-  "Ghi lại lúc 2 giờ sáng: đi review quán theo kiểu phim tài liệu" \
-  "$(jqr "$(body "$R")" idea.source_idea)"
-expect "prompt công thức được lưu" "máy quay lia chậm, ánh sáng cửa sổ, tông ấm" \
-  "$(jqr "$(body "$R")" idea.prompt_recipe)"
-expect "negative prompt được lưu" "không chữ to, không nhạc trend" \
-  "$(jqr "$(body "$R")" idea.negative_prompt)"
-expect "danh mục hook giữ nguyên thứ tự" \
-  '["Quán này không dành cho bạn","3 giây đầu quyết định tất cả"]' \
-  "$(jqr "$(body "$R")" idea.hooks)"
-expect "ý tưởng mới mặc định là ý tưởng gốc" "origin" "$(jqr "$(body "$R")" idea.kind)"
+head_ "4b. Thư viện hook, biến thể và prompt"
+R=$(req POST /api/hook-categories '{"name":"Câu hỏi"}' "$TOKEN_A")
+expect "tạo danh mục hook trả 201" 201 "$(code "$R")"
+CAT_ID=$(jqr "$(body "$R")" category.id)
 
-R=$(req POST "/api/ideas/$ORIGIN_ID/variants" '{"title":"Biến thể quay ban đêm"}' "$TOKEN_A")
-expect "tạo biến thể từ ý tưởng gốc trả 201" 201 "$(code "$R")"
-VARIANT_ID=$(jqr "$(body "$R")" idea.id)
-expect "biến thể có kind = variant" "variant" "$(jqr "$(body "$R")" idea.kind)"
-expect "biến thể trỏ về đúng ý tưởng gốc" "$ORIGIN_ID" "$(jqr "$(body "$R")" idea.parent_id)"
-expect "biến thể kế thừa prompt công thức của bản gốc" \
-  "máy quay lia chậm, ánh sáng cửa sổ, tông ấm" "$(jqr "$(body "$R")" idea.prompt_recipe)"
+R=$(req POST /api/hook-categories '{"name":"Câu hỏi"}' "$TOKEN_A")
+expect "trùng tên danh mục bị từ chối" 400 "$(code "$R")"
 
-R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_A")
-expect "GET danh mục biến thể trả 200" 200 "$(code "$R")"
-COUNT_V=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
-expect "danh mục biến thể có đúng một mục" 1 "$COUNT_V"
-
-# Cây đúng MỘT tầng: biến thể không đẻ tiếp biến thể.
-R=$(req POST "/api/ideas/$VARIANT_ID/variants" '{}' "$TOKEN_A")
-expect "tạo biến thể TỪ một biến thể bị từ chối" 400 "$(code "$R")"
-
-R=$(req GET "/api/ideas?kind=variant&limit=50" "" "$TOKEN_A")
-COUNT_KV=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
-expect "lọc kind=variant chỉ ra biến thể" 1 "$COUNT_KV"
-
-# Nút đồng bộ của riêng một ý tưởng.
-R=$(req POST "/api/ideas/$ORIGIN_ID/reindex" '{}' "$TOKEN_A")
-expect "POST /api/ideas/:id/reindex trả 200" 200 "$(code "$R")"
-echo "     outcome=$(jqr "$(body "$R")" outcome)"
-
-head_ "4c. Quản lý danh mục video hook (thêm / sửa / xoá / đổi thứ tự)"
-R=$(req GET "/api/ideas/$ORIGIN_ID/hooks" "" "$TOKEN_A")
-expect "GET danh mục hook trả 200" 200 "$(code "$R")"
-
-R=$(req POST "/api/ideas/$ORIGIN_ID/hooks" '{"text":"Hook thêm sau"}' "$TOKEN_A")
-expect "thêm hook trả 201" 201 "$(code "$R")"
+R=$(req POST /api/hooks "{\"text\":\"Bạn đang cầm máy sai cách!\",\"category_id\":\"$CAT_ID\"}" "$TOKEN_A")
+expect "tạo hook trả 201" 201 "$(code "$R")"
 HOOK_ID=$(jqr "$(body "$R")" hook.id)
-if [ -n "$HOOK_ID" ]; then c_ok "lấy được id của hook vừa thêm"; else c_bad "không lấy được id hook"; fi
 
-# Hook nằm trong văn bản đem đi nhúng, nên thêm hook PHẢI làm ý tưởng bẩn trở lại.
+R=$(req GET /api/hooks "" "$TOKEN_A")
+expect "GET /api/hooks trả 200" 200 "$(code "$R")"
+
+R=$(req POST "/api/ideas/$IDEA_ID/variants" '{"title":"Phiên bản POV","angle":"Góc nhìn người quay"}' "$TOKEN_A")
+expect "tạo biến thể trả 201" 201 "$(code "$R")"
+VAR_ID=$(jqr "$(body "$R")" variant.id)
+
+R=$(req GET "/api/ideas/$IDEA_ID/variants" "" "$TOKEN_A")
+expect "GET biến thể trả 200" 200 "$(code "$R")"
+
+# Biến thể nằm trong văn bản đem đi nhúng, nên ý tưởng phải bẩn trở lại.
 R=$(req GET /api/sync "" "$TOKEN_A")
-DIRTY_SAU_THEM=$(jqr "$(body "$R")" dirty)
-if [ "$DIRTY_SAU_THEM" -ge 1 ]; then
-  c_ok "thêm hook làm ý tưởng cần đồng bộ lại (dirty=$DIRTY_SAU_THEM)"
-else c_bad "thêm hook KHÔNG làm ý tưởng bẩn — vector sẽ mốc lại trong im lặng"; fi
+expect "thêm biến thể làm ý tưởng cần đồng bộ lại" 1 "$(jqr "$(body "$R")" dirty)"
 
-R=$(req PATCH "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID" '{"text":"Hook đã sửa"}' "$TOKEN_A")
-expect "sửa hook trả 200" 200 "$(code "$R")"
-R=$(req GET "/api/ideas/$ORIGIN_ID" "" "$TOKEN_A")
-expect "nội dung hook đã đổi trong danh mục của ý tưởng" \
-  '["Quán này không dành cho bạn","3 giây đầu quyết định tất cả","Hook đã sửa"]' \
-  "$(jqr "$(body "$R")" idea.hooks)"
+R=$(req GET "/api/prompt?variant_id=$VAR_ID&hook_id=$HOOK_ID" "" "$TOKEN_A")
+expect "sinh prompt trả 200" 200 "$(code "$R")"
+PROMPT=$(jqr "$(body "$R")" prompt)
+case "$PROMPT" in
+  *"Bạn đang cầm máy sai cách!"*) c_ok "prompt có chứa hook đã chọn" ;;
+  *) c_bad "prompt KHÔNG chứa hook đã chọn" ;;
+esac
+case "$PROMPT" in
+  *"Phiên bản POV"*) c_ok "prompt có chứa tên biến thể" ;;
+  *) c_bad "prompt KHÔNG chứa tên biến thể" ;;
+esac
+case "$PROMPT" in
+  *"{{"*) c_bad "prompt còn sót biến chưa thay" ;;
+  *) c_ok "prompt không sót biến chưa thay" ;;
+esac
 
-R=$(req POST "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID/move" '{"dir":"up"}' "$TOKEN_A")
-expect "đổi thứ tự hook trả 200" 200 "$(code "$R")"
-expect "hook đã nhích lên một bậc" "true" "$(jqr "$(body "$R")" moved)"
-R=$(req GET "/api/ideas/$ORIGIN_ID" "" "$TOKEN_A")
-expect "thứ tự mới được giữ đúng" \
-  '["Quán này không dành cho bạn","Hook đã sửa","3 giây đầu quyết định tất cả"]' \
-  "$(jqr "$(body "$R")" idea.hooks)"
+# Không hook vẫn ghép được prompt.
+R=$(req GET "/api/prompt?variant_id=$VAR_ID" "" "$TOKEN_A")
+expect "sinh prompt không hook vẫn trả 200" 200 "$(code "$R")"
 
-R=$(req POST "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID/move" '{"dir":"up"}' "$TOKEN_A")
-R=$(req POST "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID/move" '{"dir":"up"}' "$TOKEN_A")
-expect "đã ở đầu danh mục thì báo moved=false, không phải lỗi" "false" "$(jqr "$(body "$R")" moved)"
-
-R=$(req POST "/api/ideas/$ORIGIN_ID/hooks" '{"text":"   "}' "$TOKEN_A")
-expect "hook rỗng bị từ chối" 400 "$(code "$R")"
-
-R=$(req DELETE "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID" "" "$TOKEN_A")
-expect "xoá hook trả 204" 204 "$(code "$R")"
-R=$(req GET "/api/ideas/$ORIGIN_ID" "" "$TOKEN_A")
-expect "hook đã biến khỏi danh mục" \
-  '["Quán này không dành cho bạn","3 giây đầu quyết định tất cả"]' \
-  "$(jqr "$(body "$R")" idea.hooks)"
-R=$(req DELETE "/api/ideas/$ORIGIN_ID/hooks/$HOOK_ID" "" "$TOKEN_A")
-expect "xoá lại hook đã xoá trả 404" 404 "$(code "$R")"
-
-head_ "4d. Quản lý danh mục ý tưởng biến thể (xoá tại chỗ)"
-R=$(req POST "/api/ideas/$ORIGIN_ID/variants" '{"title":"Biến thể sẽ bị xoá"}' "$TOKEN_A")
-TMP_VARIANT=$(jqr "$(body "$R")" idea.id)
-R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_A")
-COUNT_V2=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
-expect "danh mục biến thể giờ có hai mục" 2 "$COUNT_V2"
-
-R=$(req DELETE "/api/ideas/$TMP_VARIANT" "" "$TOKEN_A")
-expect "xoá biến thể ngay từ danh mục trả 204" 204 "$(code "$R")"
-R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_A")
-COUNT_V3=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
-expect "danh mục biến thể còn lại một mục" 1 "$COUNT_V3"
-R=$(req GET "/api/ideas/$TMP_VARIANT" "" "$TOKEN_A")
-expect "biến thể đã xoá thì không đọc lại được" 404 "$(code "$R")"
-
-R=$(req PATCH "/api/ideas/$VARIANT_ID" '{"title":"Biến thể đã đổi tên"}' "$TOKEN_A")
-expect "sửa biến thể qua PATCH trả 200" 200 "$(code "$R")"
-expect "tên biến thể đã đổi" "Biến thể đã đổi tên" "$(jqr "$(body "$R")" idea.title)"
-expect "sửa xong vẫn là biến thể của đúng ý tưởng gốc" "$ORIGIN_ID" "$(jqr "$(body "$R")" idea.parent_id)"
+R=$(req GET /api/prompt-template "" "$TOKEN_A")
+expect "GET mẫu prompt trả 200" 200 "$(code "$R")"
+expect "chưa sửa thì là mẫu mặc định" "true" "$(jqr "$(body "$R")" is_default)"
 
 head_ "5. Cách ly giữa các tài khoản"
 TOKEN_B=$(register_token "{\"email\":\"$EMAIL_B\",\"password\":\"$PW\"}")
@@ -267,16 +202,16 @@ done
 R=$(req POST "/api/ideas/$IDEA_ID/like" "" "$TOKEN_B")
 expect "like ý tưởng của người khác trả 404" 404 "$(code "$R")"
 
-R=$(req POST "/api/ideas/$ORIGIN_ID/reindex" '{}' "$TOKEN_B")
-expect "đồng bộ ý tưởng của người khác trả 404" 404 "$(code "$R")"
-R=$(req GET "/api/ideas/$ORIGIN_ID/variants" "" "$TOKEN_B")
-expect "xem danh mục biến thể của người khác trả 404" 404 "$(code "$R")"
-R=$(req POST "/api/ideas/$ORIGIN_ID/variants" '{}' "$TOKEN_B")
-expect "tạo biến thể trên ý tưởng của người khác trả 404" 404 "$(code "$R")"
-R=$(req GET "/api/ideas/$ORIGIN_ID/hooks" "" "$TOKEN_B")
-expect "xem danh mục hook của người khác trả 404" 404 "$(code "$R")"
-R=$(req POST "/api/ideas/$ORIGIN_ID/hooks" '{"text":"chiếm chỗ"}' "$TOKEN_B")
-expect "thêm hook vào ý tưởng của người khác trả 404" 404 "$(code "$R")"
+R=$(req POST "/api/ideas/$IDEA_ID/variants" '{"title":"chiem doat"}' "$TOKEN_B")
+expect "tạo biến thể trên ý tưởng người khác trả 404" 404 "$(code "$R")"
+R=$(req PATCH "/api/variants/$VAR_ID" '{"title":"chiem doat"}' "$TOKEN_B")
+expect "sửa biến thể của người khác trả 404" 404 "$(code "$R")"
+R=$(req DELETE "/api/hooks/$HOOK_ID" "" "$TOKEN_B")
+expect "xoá hook của người khác trả 404" 404 "$(code "$R")"
+R=$(req POST /api/hooks "{\"text\":\"x\",\"category_id\":\"$CAT_ID\"}" "$TOKEN_B")
+expect "gán hook vào danh mục người khác trả 404" 404 "$(code "$R")"
+R=$(req GET "/api/prompt?variant_id=$VAR_ID" "" "$TOKEN_B")
+expect "sinh prompt từ biến thể người khác trả 404" 404 "$(code "$R")"
 
 R=$(req GET "/api/ideas?limit=50" "" "$TOKEN_B")
 COUNT_B=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')

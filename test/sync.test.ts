@@ -15,16 +15,10 @@ import type { Env } from '../src/types';
 
 const BASE = {
   title: 'Mẹo quay phim',
-  hook: 'hook',
   script_outline: 'dàn ý',
-  source_idea: '',
-  prompt_recipe: '',
-  negative_prompt: '',
   platform: 'tiktok' as const,
   niche: 'phim',
   status: 'idea' as const,
-  kind: 'origin' as const,
-  parent_id: null,
 };
 
 /** Env với Vectorize giả — thay vì gọi ra dịch vụ thật. */

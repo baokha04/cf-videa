@@ -313,66 +313,6 @@ button.link {
 }
 .chip.score { color: var(--ok); }
 .chip.pending { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
-.chip.variant { color: var(--accent); border-color: var(--accent); background: transparent; }
-
-/* Nút đồng bộ của riêng từng thẻ. Tách hẳn xuống một hàng dưới phần meta để không
-   bị lẫn vào đám chip, và giữ đúng vùng chạm 44px như mọi nút khác. */
-.idea-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
-.idea-actions { gap: 8px; flex-wrap: wrap; }
-.idea-actions button { font-size: 14px; padding: 0 14px; }
-/* Cùng thủ thuật với .actions > a: để thẻ <a> tàng hình đi thì <button> bên trong
-   nhận thẳng layout của flex container, không thành một hộp lồng. */
-.idea-actions > a.btn-link { display: contents; }
-@media (max-width: 560px) { .idea-actions button { flex: 1 1 100%; } }
-
-/* --- Danh mục video hook -------------------------------------------------- */
-/* Mỗi dòng là một hook sửa/xoá/sắp xếp được riêng. Số thứ tự có mặt vì thứ tự ở đây
-   MANG NGHĨA: dòng 1 là hook đang ưng nhất. */
-.hook-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-.hook-row:last-child { border-bottom: 0; }
-.hook-no {
-  flex: 0 0 auto;
-  min-width: 22px;
-  text-align: right;
-  color: var(--muted);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-}
-.hook-row .hook-text { flex: 1 1 200px; min-width: 0; margin: 0; }
-.hook-row .hook-text:disabled { opacity: .6; }
-.hook-actions { display: flex; gap: 6px; flex: 0 0 auto; }
-/* Nút mũi tên vuông và hẹp, nhưng vẫn giữ đủ 44px chiều cao vùng chạm của iOS. */
-.hook-actions button { font-size: 14px; padding: 0 12px; min-width: var(--tap); }
-.hook-actions button[disabled] { opacity: .4; }
-.hook-add-row { margin-top: 14px; align-items: flex-end; }
-/* Màn hẹp: số thứ tự PHẢI ở cùng dòng với ô nhập của chính nó, chỉ đám nút mới
-   xuống dòng. Cho ô nhập xuống dòng riêng (order: -1) làm con số trôi xuống giữa
-   hai hook và trông như đang đánh số cho hook bên dưới. */
-@media (max-width: 560px) {
-  .hook-row { align-items: baseline; }
-  .hook-row .hook-text { flex: 1 1 120px; }
-  .hook-actions { flex: 1 1 100%; margin-left: 30px; }
-  .hook-actions button { flex: 1 1 0; min-width: 0; }
-}
-
-/* Dòng "biến thể của …" ngay dưới tiêu đề trang ý tưởng. */
-.parent-of {
-  margin: -6px 0 18px;
-  font-size: 14px;
-  color: var(--muted);
-}
-.parent-of a { color: var(--accent); }
 
 /* --- Thanh đồng bộ ------------------------------------------------------- */
 /* Nổi bật hơn thẻ thường: đây là hành động người dùng phải chủ động làm, vì việc
@@ -436,3 +376,48 @@ th { color: var(--muted); font-weight: 550; font-size: 13px; }
 
 /* Hàng chứa nút giao diện trên các trang không có thanh điều hướng. */
 .topbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+
+/* --- Thư viện hook -------------------------------------------------------- */
+.chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip.cat { display: inline-flex; align-items: center; gap: 6px; padding-right: 4px; }
+.chip-x {
+  min-height: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chip-x:hover { color: var(--danger); }
+
+.hook .hook-text { margin: 0 0 10px; white-space: pre-wrap; }
+.variant h3 { margin: 0 0 4px; font-size: 16px; }
+
+/* --- Prompt --------------------------------------------------------------- */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+}
+textarea.tall { min-height: 300px; }
+
+.prompt-out {
+  margin: 14px 0 0;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  /* Prompt là văn bản dài có xuống dòng — bọc lại thay vì bắt cuộn ngang trên điện thoại. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 60vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}

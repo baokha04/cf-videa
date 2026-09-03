@@ -1,4 +1,4 @@
-import { del, get, post } from './api.js';
+import { del, get, post, put } from './api.js';
 import { $, esc, show } from './ui.js';
 import { mountNav } from './nav.js';
 
@@ -61,9 +61,56 @@ $('#sessions').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try {
     await del(`/api/auth/sessions/${encodeURIComponent(id)}`);
-    await loadSessions();
+    await loadTemplate();
+await loadSessions();
   } catch (err) {
     show($('#smsg'), err.message);
+  }
+});
+
+// --- Mẫu prompt ------------------------------------------------------------
+
+async function loadTemplate() {
+  try {
+    const t = await get('/api/prompt-template');
+    $('#tpl').value = t.body;
+    $('#tplvars').textContent = t.variables.map((v) => `{{${v}}}`).join('  ');
+    if (t.unknown.length) {
+      show($('#tplmsg'),
+        `Mẫu đang có biến không nhận biết được: ${t.unknown.join(', ')}. `
+        + 'Chúng sẽ xuất hiện nguyên văn trong prompt.', 'note');
+    }
+  } catch (err) {
+    show($('#tplmsg'), err.message);
+  }
+}
+
+$('#tplsave').addEventListener('click', async () => {
+  const btn = $('#tplsave');
+  btn.disabled = true;
+  try {
+    const r = await put('/api/prompt-template', { body: $('#tpl').value });
+    show($('#tplmsg'),
+      r.unknown.length
+        ? `Đã lưu, nhưng có biến không nhận biết được: ${r.unknown.join(', ')}. `
+          + 'Kiểm tra lại xem có gõ sai không.'
+        : 'Đã lưu mẫu prompt.',
+      r.unknown.length ? 'note' : 'ok');
+  } catch (err) {
+    show($('#tplmsg'), err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('#tplreset').addEventListener('click', async () => {
+  if (!confirm('Đưa mẫu về mặc định? Mẫu bạn đang sửa sẽ mất.')) return;
+  try {
+    const r = await del('/api/prompt-template');
+    $('#tpl').value = r.body;
+    show($('#tplmsg'), 'Đã đưa về mẫu mặc định.', 'ok');
+  } catch (err) {
+    show($('#tplmsg'), err.message);
   }
 });
 
@@ -84,7 +131,8 @@ $('#pw').addEventListener('submit', async (e) => {
       `Đã đổi mật khẩu. Đã thu hồi ${res.revoked_sessions} phiên khác.`,
       'ok',
     );
-    await loadSessions();
+    await loadTemplate();
+await loadSessions();
   } catch (err) {
     show($('#pwmsg'), err.message);
   } finally {
@@ -97,7 +145,8 @@ $('#revokeall').addEventListener('click', async () => {
   try {
     const res = await post('/api/auth/revoke-all');
     show($('#smsg'), `Đã thu hồi ${res.revoked_sessions} phiên khác.`, 'ok');
-    await loadSessions();
+    await loadTemplate();
+await loadSessions();
   } catch (err) {
     show($('#smsg'), err.message);
   }
@@ -111,4 +160,5 @@ $('#logout').addEventListener('click', async () => {
   }
 });
 
+await loadTemplate();
 await loadSessions();

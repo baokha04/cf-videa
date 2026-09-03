@@ -6,10 +6,11 @@ import { parseCookies, serializeCookie } from './http/cookies';
 import { cookieMaxAge, renewSession, resolveSession } from './auth/session';
 import * as auth from './routes/auth';
 import * as ideas from './routes/ideas';
-import * as hooks from './routes/hooks';
 import * as search from './routes/search';
 import * as recommend from './routes/recommend';
 import * as admin from './routes/admin';
+import * as hooks from './routes/hooks';
+import * as variants from './routes/variants';
 
 /**
  * Toàn bộ API nằm ở một router duy nhất, và `src/` không import gì từ Pages.
@@ -82,16 +83,28 @@ app.delete('/ideas/:id', ideas.deleteIdea);
 app.post('/ideas/:id/like', ideas.likeIdea);
 app.delete('/ideas/:id/like', ideas.unlikeIdea);
 app.get('/ideas/:id/similar', search.similar);
-app.get('/ideas/:id/variants', ideas.listVariants);
-app.post('/ideas/:id/variants', ideas.createVariant);
-app.post('/ideas/:id/reindex', ideas.reindexIdea);
 
-// Danh mục video hook — quản lý từng mục, mỗi mục có id riêng.
-app.get('/ideas/:id/hooks', hooks.listHooks);
-app.post('/ideas/:id/hooks', hooks.addHook);
-app.patch('/ideas/:id/hooks/:hookId', hooks.updateHook);
-app.delete('/ideas/:id/hooks/:hookId', hooks.removeHook);
-app.post('/ideas/:id/hooks/:hookId/move', hooks.moveHook);
+// Biến thể của một ý tưởng gốc.
+app.get('/ideas/:id/variants', variants.listVariants);
+app.post('/ideas/:id/variants', variants.createVariant);
+app.patch('/variants/:id', variants.updateVariant);
+app.delete('/variants/:id', variants.deleteVariant);
+
+// Thư viện hook, có nhóm danh mục.
+app.get('/hook-categories', hooks.listCategories);
+app.post('/hook-categories', hooks.createCategory);
+app.patch('/hook-categories/:id', hooks.updateCategory);
+app.delete('/hook-categories/:id', hooks.deleteCategory);
+app.get('/hooks', hooks.listHooks);
+app.post('/hooks', hooks.createHook);
+app.patch('/hooks/:id', hooks.updateHook);
+app.delete('/hooks/:id', hooks.deleteHook);
+
+// Ghép prompt: GET vì đây là thao tác đọc thuần tuý, không đổi gì.
+app.get('/prompt', variants.generatePrompt);
+app.get('/prompt-template', admin.getPromptTemplate);
+app.put('/prompt-template', admin.savePromptTemplate);
+app.delete('/prompt-template', admin.resetPromptTemplate);
 
 app.get('/search', search.search);
 app.get('/recommendations', recommend.recommendations);

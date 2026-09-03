@@ -94,27 +94,6 @@ export function parseTags(raw: unknown): string[] {
   return [...seen];
 }
 
-/**
- * Danh mục video hook: một mảng chuỗi, THỨ TỰ CÓ Ý NGHĨA (hook đầu danh sách là hook
- * đang ưng nhất) nên không sắp xếp lại như tag — chỉ bỏ dòng rỗng và bỏ trùng lặp,
- * giữ nguyên lần xuất hiện đầu tiên.
- */
-export function parseHooks(raw: unknown): string[] {
-  if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw)) throw badRequest('invalid_field', 'Trường hooks phải là một mảng.');
-  if (raw.length > 30) throw badRequest('invalid_field', 'Tối đa 30 hook cho mỗi ý tưởng.');
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const h of raw) {
-    const text = normText(h, 500, 'hooks');
-    if (text && !seen.has(text)) {
-      seen.add(text);
-      out.push(text);
-    }
-  }
-  return out;
-}
-
 export function clampLimit(raw: string | null, def = 20, max = 50): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 1) return def;
