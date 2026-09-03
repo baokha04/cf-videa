@@ -36,15 +36,32 @@ export async function api(path, { method = 'GET', body, redirectOn401 = true } =
   if (res.status === 204) return null;
 
   let data = null;
+  let parseFailed = false;
   try {
     data = await res.json();
   } catch {
     data = null;
+    parseFailed = true;
   }
 
   if (!res.ok) {
     const e = data && data.error ? data.error : {};
     throw new ApiError(res.status, e.code || 'unknown', e.message || 'Có lỗi xảy ra.');
+  }
+
+  // Phản hồi 2xx mà không đọc được thân JSON thì NÉM, đừng trả null.
+  //
+  // Chỉ 204 mới hợp lệ khi không có thân, và nó đã được xử lý ở trên. Trả null cho một
+  // 200 hỏng thân nghĩa là mọi nơi gọi — vốn đều làm `data.<gì đó>` ngay sau — sẽ ném
+  // TypeError sâu bên trong, không có thông điệp nào cho người dùng và chẳng chỉ về
+  // đúng nguyên nhân. Ném ở đây thì lỗi mang đúng tên của nó.
+  //
+  // Gặp thật lúc kiểm thử: điều hướng sang trang khác cắt ngang lúc đang đọc thân phản
+  // hồi, res.json() bị huỷ, và mountNav ném "Cannot read properties of null". Trường
+  // hợp đó vô hại vì trang đang bị dỡ, nhưng một phản hồi 200 bị cắt cụt thật cũng đi
+  // đúng đường này.
+  if (parseFailed) {
+    throw new ApiError(res.status, 'bad_response', 'Máy chủ trả về phản hồi không đọc được.');
   }
   return data;
 }

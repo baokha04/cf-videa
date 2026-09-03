@@ -305,6 +305,31 @@ export async function list(
   };
 }
 
+/**
+ * Chỉ id + tiêu đề, cho các ô chọn "ý tưởng gốc nào".
+ *
+ * Cố ý KHÔNG dùng list() rồi lấy hai cột: list() phân trang tối đa 50, nên một ô chọn
+ * dựng từ nó sẽ âm thầm thiếu ý tưởng và người dùng không hiểu vì sao ý tưởng của mình
+ * biến mất khỏi danh sách.
+ *
+ * Có trần riêng và trả kèm cờ `truncated`: một ô chọn vẫn phải có điểm dừng, nhưng khi
+ * chạm trần thì giao diện phải NÓI ra chứ không lặng lẽ cắt.
+ */
+export async function listTitles(
+  env: Env,
+  userId: string,
+  limit: number,
+): Promise<{ rows: Array<{ id: string; title: string }>; truncated: boolean }> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, title FROM ideas WHERE user_id = ?1
+      ORDER BY updated_at DESC, id DESC LIMIT ?2`,
+  )
+    .bind(userId, limit + 1)
+    .all<{ id: string; title: string }>();
+  const truncated = results.length > limit;
+  return { rows: truncated ? results.slice(0, limit) : results, truncated };
+}
+
 /** Worklist đối soát: hàng có vector thiếu hoặc đã cũ. */
 export async function listDirty(
   env: Env,

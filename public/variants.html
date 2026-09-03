@@ -16,8 +16,8 @@
 <main>
   <h1>Kho ý tưởng biến thể</h1>
   <p class="sub">
-    Mọi biến thể của bạn, gom về một chỗ. Biến thể luôn thuộc về một ý tưởng gốc — tạo
-    và sửa nó ở trang ý tưởng đó, còn đây là nơi duyệt và tìm lại chúng.
+    Mọi biến thể của bạn, gom về một chỗ — thêm, sửa, xoá và index ngay tại đây. Biến
+    thể luôn thuộc về một ý tưởng gốc, nên lúc tạo bạn chọn ý tưởng cha cho nó.
   </p>
   <p class="sub">
     Mỗi biến thể có vector riêng, index bằng nút <strong>Index</strong> trên chính thẻ
@@ -25,6 +25,34 @@
     <a href="/app">trang kho ý tưởng</a> — nó chạy cho cả ba kho.
   </p>
 
+  <h2>Thêm biến thể</h2>
+  <div class="card">
+    <form id="vform">
+      <label for="videa">Ý tưởng gốc</label>
+      <select id="videa" required></select>
+      <!-- Bật lên khi số ý tưởng chạm trần của ô chọn: nói thẳng thay vì lặng lẽ thiếu. -->
+      <p id="videa-note" class="muted small" hidden></p>
+
+      <label for="vtitle">Tên biến thể</label>
+      <input id="vtitle" maxlength="200" placeholder="Phiên bản POV, phiên bản phản đề…">
+
+      <label for="vangle">Góc nhìn</label>
+      <input id="vangle" maxlength="1000" placeholder="Quay từ góc nhìn người đang ăn">
+
+      <label for="vscript">
+        Dàn ý riêng <span class="muted small">(bỏ trống để dùng dàn ý của ý tưởng gốc)</span>
+      </label>
+      <textarea id="vscript" maxlength="8000"></textarea>
+
+      <div class="actions">
+        <button class="primary" type="submit" id="vsave">Thêm biến thể</button>
+        <button type="button" id="vcancel" hidden>Huỷ sửa</button>
+      </div>
+    </form>
+    <p id="vmsg" class="msg"></p>
+  </div>
+
+  <h2>Danh sách</h2>
   <div class="card">
     <form id="filters">
       <label for="q">Tìm trong tên, góc nhìn và dàn ý riêng</label>

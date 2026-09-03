@@ -235,6 +235,20 @@ export async function unlikeIdea(c: Ctx): Promise<Response> {
   return c.body(null, 204);
 }
 
+/**
+ * Danh sách id + tiêu đề mọi ý tưởng, cho ô chọn "ý tưởng gốc" ở kho biến thể.
+ *
+ * Trần 500: đủ rộng cho một người dùng thật, và khi chạm trần thì `truncated` bật lên
+ * để giao diện nói thẳng thay vì lặng lẽ thiếu.
+ */
+const TITLES_LIMIT = 500;
+
+export async function listIdeaTitles(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  const { rows, truncated } = await ideasDb.listTitles(c.env, user.id, TITLES_LIMIT);
+  return c.json({ ideas: rows, truncated, limit: TITLES_LIMIT });
+}
+
 export async function listTagsRoute(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const { listTags } = await import('../db/tags');

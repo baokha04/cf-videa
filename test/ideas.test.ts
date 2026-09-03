@@ -187,3 +187,55 @@ describe('negative prompt', () => {
     expect(row.source_hook_id).toBeNull();
   });
 });
+
+describe('danh sách id + tiêu đề cho ô chọn ý tưởng gốc', () => {
+  let uid: string;
+
+  beforeEach(async () => {
+    await migrate();
+    await testEnv().DB.prepare('DELETE FROM users').run();
+    uid = (await mkUser()).id;
+  });
+
+  it('trả về mọi ý tưởng, mới nhất trước', async () => {
+    for (let i = 0; i < 3; i++) {
+      await ideasDb.create(testEnv(), uid, { ...BASE, title: `Ý tưởng ${i}` }, `h${i}`);
+    }
+    const { rows, truncated } = await ideasDb.listTitles(testEnv(), uid, 50);
+    expect(rows).toHaveLength(3);
+    expect(truncated).toBe(false);
+    // Chỉ hai cột — ô chọn không cần gì hơn, và kéo cả hàng về là phí băng thông.
+    expect(Object.keys(rows[0]!).sort()).toEqual(['id', 'title']);
+  });
+
+  it('chạm trần thì BÁO ra bằng cờ truncated chứ không lặng lẽ cắt', async () => {
+    // Đây là cả lý do endpoint này tồn tại: /api/ideas phân trang 50 và cắt im lặng.
+    for (let i = 0; i < 5; i++) {
+      await ideasDb.create(testEnv(), uid, { ...BASE, title: `Ý tưởng ${i}` }, `h${i}`);
+    }
+    const { rows, truncated } = await ideasDb.listTitles(testEnv(), uid, 3);
+    expect(rows).toHaveLength(3);
+    expect(truncated).toBe(true);
+
+    const all = await ideasDb.listTitles(testEnv(), uid, 5);
+    expect(all.rows).toHaveLength(5);
+    expect(all.truncated, 'đúng bằng trần thì chưa phải là bị cắt').toBe(false);
+  });
+
+  it('KHÔNG trả về ý tưởng của tài khoản khác', async () => {
+    const other = await usersDb.insert(
+      testEnv(), 'b@example.com', await hashPassword('x', 1000), null,
+    );
+    await ideasDb.create(testEnv(), uid, { ...BASE, title: 'Của tôi' }, 'h1');
+    await ideasDb.create(testEnv(), other!.id, { ...BASE, title: 'Của người khác' }, 'h2');
+
+    const { rows } = await ideasDb.listTitles(testEnv(), uid, 50);
+    expect(rows.map((r) => r.title)).toEqual(['Của tôi']);
+  });
+
+  it('không có ý tưởng nào thì trả mảng rỗng, không phải lỗi', async () => {
+    const { rows, truncated } = await ideasDb.listTitles(testEnv(), uid, 50);
+    expect(rows).toEqual([]);
+    expect(truncated).toBe(false);
+  });
+});
