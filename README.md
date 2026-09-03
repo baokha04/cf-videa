@@ -568,10 +568,10 @@ về NULL, nên lần đồng bộ kế tiếp sẽ upsert đè lên đúng nh�
 vector của ý tưởng là id trần không tiền tố nên chúng khớp nhau — đó là một lý do nữa để
 ý tưởng KHÔNG đổi sang id có tiền tố.
 
-`videa-ideas-preview` còn một metadata index thừa tên `kind`, do nhánh thiết kế bị loại để
-lại (nó dùng `kind` thay cho `type`). Vô hại vì không còn gì ghi vào đó, nhưng là rác cho
-người đọc sau này — xoá bằng `wrangler vectorize delete-metadata-index videa-ideas-preview
---property-name=kind` nếu muốn dọn.
+Đã xoá metadata index thừa tên `kind` khỏi `videa-ideas-preview` (2026-09-03) — di sản của
+nhánh thiết kế bị loại, vốn dùng `kind` thay cho `type`. Hai index nay giống hệt nhau, đúng
+5 property. Lệnh xoá cũng bất đồng bộ như lệnh tạo, phải poll mới biết đã xong:
+`wrangler vectorize delete-metadata-index <index> --propertyName=<tên>`.
 
 **Migration `0006` và `0007`: đã chạy trên cả hai database** (2026-09-03), đã xác minh bằng
 `schema_migrations` và `pragma_table_info`. Trạng thái ngay sau đó:
