@@ -147,7 +147,11 @@ describe('phiên đăng nhập', () => {
     const { token } = await createSession(testEnv(), u.id, { remember: false });
     const r = await resolveSession(testEnv(), token);
     expect(r?.session.remember).toBe(false);
-    expect(r!.session.expires_at - t0).toBeLessThanOrEqual(IDLE_TTL_SESSION_MS);
+    // Biên độ 5 giây: t0 được lấy TRƯỚC createSession, nên hiệu số luôn nhỉnh hơn
+    // TTL đúng bằng thời gian trôi qua giữa hai mốc.
+    const delta = r!.session.expires_at - t0;
+    expect(delta).toBeGreaterThan(IDLE_TTL_SESSION_MS - 5000);
+    expect(delta).toBeLessThan(IDLE_TTL_SESSION_MS + 5000);
     // undefined = KHÔNG đặt Max-Age = cookie phiên. Đây là điểm mấu chốt của tính
     // năng: máy dùng chung thì đóng trình duyệt là mất đăng nhập.
     expect(cookieMaxAge(false)).toBeUndefined();

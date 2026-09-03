@@ -3,8 +3,10 @@ import { pathParam, readJson, requireUser } from '../http/guard';
 import { notFound } from '../http/response';
 import * as ideasDb from '../db/ideas';
 import * as likesDb from '../db/likes';
+import * as variantsDb from '../db/variants';
 import { setIdeaTags, tagsForIdeas } from '../db/tags';
-import { buildEmbedText, contentHash } from '../vec/embeddings';
+import { ideaEmbedText } from '../content';
+import { contentHash } from '../vec/embeddings';
 import { deleteIdeaVectors, metaSignature, queueGc } from '../vec/index';
 import { invalidateTasteVector } from '../vec/profile';
 import {
@@ -34,7 +36,6 @@ function parseIdeaInput(body: Record<string, unknown>, base?: IdeaRow) {
     title: has('title') || !base
       ? requiredText(body['title'], 200, 'title')
       : base.title,
-    hook: has('hook') || !base ? normText(body['hook'], 500, 'hook') : base.hook,
     script_outline: has('script_outline') || !base
       ? normText(body['script_outline'], 8000, 'script_outline')
       : base.script_outline,
@@ -48,11 +49,16 @@ function parseIdeaInput(body: Record<string, unknown>, base?: IdeaRow) {
   };
 }
 
-function toDto(row: IdeaRow, tags: string[], liked: boolean, score?: number): IdeaDto {
+function toDto(
+  row: IdeaRow,
+  tags: string[],
+  liked: boolean,
+  variantCount: number,
+  score?: number,
+): IdeaDto {
   return {
     id: row.id,
     title: row.title,
-    hook: row.hook,
     script_outline: row.script_outline,
     platform: row.platform,
     niche: row.niche,
@@ -60,6 +66,7 @@ function toDto(row: IdeaRow, tags: string[], liked: boolean, score?: number): Id
     visibility: row.visibility,
     tags,
     liked,
+    variant_count: variantCount,
     // "Đã index" nghĩa là vector trên Vectorize khớp CẢ nội dung LẪN metadata.
     indexed:
       row.embedded_hash === row.content_hash &&
@@ -79,12 +86,14 @@ export async function hydrate(
 ): Promise<IdeaDto[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const [tagMap, liked] = await Promise.all([
+  const [tagMap, liked, variantCounts] = await Promise.all([
     tagsForIdeas(c.env, ids),
     likesDb.likedSet(c.env, userId, ids),
+    variantsDb.countForIdeas(c.env, userId, ids),
   ]);
   return rows.map((r) =>
-    toDto(r, tagMap.get(r.id) ?? [], liked.has(r.id), scores?.get(r.id)),
+    toDto(r, tagMap.get(r.id) ?? [], liked.has(r.id), variantCounts.get(r.id) ?? 0,
+          scores?.get(r.id)),
   );
 }
 
@@ -126,11 +135,12 @@ export async function createIdea(c: Ctx): Promise<Response> {
   const input = parseIdeaInput(body);
   const tags = parseTags(body['tags']);
 
-  const hash = await contentHash(buildEmbedText({ ...input }, tags));
+  // Ý tưởng mới chưa có biến thể nào.
+  const hash = await contentHash(ideaEmbedText({ ...input }, tags, []));
   const row = await ideasDb.create(c.env, user.id, input, hash);
   if (tags.length) await setIdeaTags(c.env, user.id, row.id, tags);
 
-  return c.json({ idea: toDto(row, tags, false), indexed: false }, 201);
+  return c.json({ idea: toDto(row, tags, false, 0), indexed: false }, 201);
 }
 
 export async function getIdea(c: Ctx): Promise<Response> {
@@ -154,7 +164,10 @@ export async function updateIdea(c: Ctx): Promise<Response> {
     ? parseTags(body['tags'])
     : (tagMap.get(id) ?? []);
 
-  const hash = await contentHash(buildEmbedText({ ...input }, tags));
+  // Phải gộp cả biến thể hiện có, nếu không mỗi lần sửa ý tưởng sẽ vô tình xoá chúng
+  // khỏi văn bản nhúng và tìm kiếm ngữ nghĩa mất dấu các góc triển khai.
+  const variants = await variantsDb.listForIdea(c.env, user.id, id);
+  const hash = await contentHash(ideaEmbedText({ ...input }, tags, variants));
   const ok = await ideasDb.update(c.env, user.id, id, input, hash);
   if (!ok) throw notFound('Không tìm thấy ý tưởng.');
   if (Object.prototype.hasOwnProperty.call(body, 'tags')) {

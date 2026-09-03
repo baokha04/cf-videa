@@ -104,7 +104,7 @@ R=$(curl -sS -m 30 -X POST "$BASE/api/ideas" -H 'Content-Type: text/plain' \
 expect "POST sai Content-Type bị từ chối" 400 "$(code "$R")"
 
 head_ "4. CRUD ý tưởng"
-IDEA='{"title":"5 mẹo quay video bằng điện thoại","hook":"Bạn đang cầm máy sai cách!","script_outline":"1. Khoá nét 2. Ánh sáng cửa sổ 3. Quay ngang","platform":"tiktok","niche":"làm phim","tags":["quay phim","mẹo"]}'
+IDEA='{"title":"5 mẹo quay video bằng điện thoại","script_outline":"1. Khoá nét 2. Ánh sáng cửa sổ 3. Quay ngang","platform":"tiktok","niche":"làm phim","tags":["quay phim","mẹo"]}'
 R=$(req POST /api/ideas "$IDEA" "$TOKEN_A")
 expect "POST /api/ideas trả 201" 201 "$(code "$R")"
 IDEA_ID=$(jqr "$(body "$R")" idea.id)
@@ -139,6 +139,56 @@ expect "like lần hai vẫn 204 (idempotent)" 204 "$(code "$R")"
 R=$(req GET /api/tags "" "$TOKEN_A")
 expect "GET /api/tags trả 200" 200 "$(code "$R")"
 
+head_ "4b. Thư viện hook, biến thể và prompt"
+R=$(req POST /api/hook-categories '{"name":"Câu hỏi"}' "$TOKEN_A")
+expect "tạo danh mục hook trả 201" 201 "$(code "$R")"
+CAT_ID=$(jqr "$(body "$R")" category.id)
+
+R=$(req POST /api/hook-categories '{"name":"Câu hỏi"}' "$TOKEN_A")
+expect "trùng tên danh mục bị từ chối" 400 "$(code "$R")"
+
+R=$(req POST /api/hooks "{\"text\":\"Bạn đang cầm máy sai cách!\",\"category_id\":\"$CAT_ID\"}" "$TOKEN_A")
+expect "tạo hook trả 201" 201 "$(code "$R")"
+HOOK_ID=$(jqr "$(body "$R")" hook.id)
+
+R=$(req GET /api/hooks "" "$TOKEN_A")
+expect "GET /api/hooks trả 200" 200 "$(code "$R")"
+
+R=$(req POST "/api/ideas/$IDEA_ID/variants" '{"title":"Phiên bản POV","angle":"Góc nhìn người quay"}' "$TOKEN_A")
+expect "tạo biến thể trả 201" 201 "$(code "$R")"
+VAR_ID=$(jqr "$(body "$R")" variant.id)
+
+R=$(req GET "/api/ideas/$IDEA_ID/variants" "" "$TOKEN_A")
+expect "GET biến thể trả 200" 200 "$(code "$R")"
+
+# Biến thể nằm trong văn bản đem đi nhúng, nên ý tưởng phải bẩn trở lại.
+R=$(req GET /api/sync "" "$TOKEN_A")
+expect "thêm biến thể làm ý tưởng cần đồng bộ lại" 1 "$(jqr "$(body "$R")" dirty)"
+
+R=$(req GET "/api/prompt?variant_id=$VAR_ID&hook_id=$HOOK_ID" "" "$TOKEN_A")
+expect "sinh prompt trả 200" 200 "$(code "$R")"
+PROMPT=$(jqr "$(body "$R")" prompt)
+case "$PROMPT" in
+  *"Bạn đang cầm máy sai cách!"*) c_ok "prompt có chứa hook đã chọn" ;;
+  *) c_bad "prompt KHÔNG chứa hook đã chọn" ;;
+esac
+case "$PROMPT" in
+  *"Phiên bản POV"*) c_ok "prompt có chứa tên biến thể" ;;
+  *) c_bad "prompt KHÔNG chứa tên biến thể" ;;
+esac
+case "$PROMPT" in
+  *"{{"*) c_bad "prompt còn sót biến chưa thay" ;;
+  *) c_ok "prompt không sót biến chưa thay" ;;
+esac
+
+# Không hook vẫn ghép được prompt.
+R=$(req GET "/api/prompt?variant_id=$VAR_ID" "" "$TOKEN_A")
+expect "sinh prompt không hook vẫn trả 200" 200 "$(code "$R")"
+
+R=$(req GET /api/prompt-template "" "$TOKEN_A")
+expect "GET mẫu prompt trả 200" 200 "$(code "$R")"
+expect "chưa sửa thì là mẫu mặc định" "true" "$(jqr "$(body "$R")" is_default)"
+
 head_ "5. Cách ly giữa các tài khoản"
 TOKEN_B=$(register_token "{\"email\":\"$EMAIL_B\",\"password\":\"$PW\"}")
 if [ -n "$TOKEN_B" ]; then c_ok "đăng ký được tài khoản thứ hai"; else c_bad "không đăng ký được tài khoản thứ hai"; fi
@@ -151,6 +201,17 @@ for M in GET PATCH DELETE; do
 done
 R=$(req POST "/api/ideas/$IDEA_ID/like" "" "$TOKEN_B")
 expect "like ý tưởng của người khác trả 404" 404 "$(code "$R")"
+
+R=$(req POST "/api/ideas/$IDEA_ID/variants" '{"title":"chiem doat"}' "$TOKEN_B")
+expect "tạo biến thể trên ý tưởng người khác trả 404" 404 "$(code "$R")"
+R=$(req PATCH "/api/variants/$VAR_ID" '{"title":"chiem doat"}' "$TOKEN_B")
+expect "sửa biến thể của người khác trả 404" 404 "$(code "$R")"
+R=$(req DELETE "/api/hooks/$HOOK_ID" "" "$TOKEN_B")
+expect "xoá hook của người khác trả 404" 404 "$(code "$R")"
+R=$(req POST /api/hooks "{\"text\":\"x\",\"category_id\":\"$CAT_ID\"}" "$TOKEN_B")
+expect "gán hook vào danh mục người khác trả 404" 404 "$(code "$R")"
+R=$(req GET "/api/prompt?variant_id=$VAR_ID" "" "$TOKEN_B")
+expect "sinh prompt từ biến thể người khác trả 404" 404 "$(code "$R")"
 
 R=$(req GET "/api/ideas?limit=50" "" "$TOKEN_B")
 COUNT_B=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')

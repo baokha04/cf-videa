@@ -1,7 +1,9 @@
 import type { Env, IdeaRow } from '../types';
 import * as ideasDb from '../db/ideas';
 import { tagsForIdeas } from '../db/tags';
-import { buildEmbedText, embed, MODEL_ID } from './embeddings';
+import { embed, MODEL_ID } from './embeddings';
+import { ideaEmbedText } from '../content';
+import * as variantsDb from '../db/variants';
 import { getVectors, upsertIdeas } from './index';
 
 /**
@@ -89,11 +91,18 @@ export async function reconcile(
   }
 
   if (needEmbed.length > 0) {
-    const tagMap = await tagsForIdeas(env, needEmbed.map((r) => r.id));
+    const ids = needEmbed.map((r) => r.id);
+    // Hai truy vấn gom cho cả lô, không phải mỗi hàng một truy vấn.
+    const [tagMap, variantMap] = await Promise.all([
+      tagsForIdeas(env, ids),
+      variantsDb.listForIdeas(env, ids),
+    ]);
 
     for (let i = 0; i < needEmbed.length; i += EMBED_BATCH) {
       const chunk = needEmbed.slice(i, i + EMBED_BATCH);
-      const texts = chunk.map((r) => buildEmbedText(r, tagMap.get(r.id) ?? []));
+      const texts = chunk.map((r) =>
+        ideaEmbedText(r, tagMap.get(r.id) ?? [], variantMap.get(r.id) ?? []),
+      );
       let vectors: number[][];
       try {
         vectors = await embed(env, texts);

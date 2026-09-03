@@ -32,7 +32,6 @@ export function needsEmbedding(row: IdeaRow): boolean {
 
 export interface IdeaInput {
   title: string;
-  hook: string;
   script_outline: string;
   platform: Platform;
   niche: string;
@@ -72,15 +71,14 @@ export async function create(
   const t = now();
   const id = newId();
   await env.DB.prepare(
-    `INSERT INTO ideas (id, user_id, title, hook, script_outline, platform, niche, status,
+    `INSERT INTO ideas (id, user_id, title, script_outline, platform, niche, status,
                         visibility, lang, content_hash, embed_attempts, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'private', 'vi', ?9, 0, ?10, ?10)`,
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'private', 'vi', ?8, 0, ?9, ?9)`,
   )
     .bind(
       id,
       userId,
       input.title,
-      input.hook,
       input.script_outline,
       input.platform,
       input.niche,
@@ -116,15 +114,14 @@ export async function update(
 ): Promise<boolean> {
   const res = await env.DB.prepare(
     `UPDATE ideas
-        SET title = ?3, hook = ?4, script_outline = ?5, platform = ?6, niche = ?7,
-            status = ?8, content_hash = ?9, updated_at = ?10
+        SET title = ?3, script_outline = ?4, platform = ?5, niche = ?6,
+            status = ?7, content_hash = ?8, updated_at = ?9
       WHERE id = ?1 AND user_id = ?2`,
   )
     .bind(
       id,
       userId,
       input.title,
-      input.hook,
       input.script_outline,
       input.platform,
       input.niche,
@@ -244,11 +241,14 @@ export async function list(
   if (filters.niche) where.push(`i.niche = ${bind(filters.niche)}`);
   if (filters.q) {
     const like = `%${filters.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+    // Tìm cả trong biến thể: người dùng nhớ góc triển khai chứ không phải lúc nào
+    // cũng nhớ tiêu đề gốc.
     where.push(
       `(i.title LIKE ${bind(like)} ESCAPE '\\'` +
-        ` OR i.hook LIKE ${bind(like)} ESCAPE '\\'` +
         ` OR i.script_outline LIKE ${bind(like)} ESCAPE '\\'` +
-        ` OR i.niche LIKE ${bind(like)} ESCAPE '\\')`,
+        ` OR i.niche LIKE ${bind(like)} ESCAPE '\\'` +
+        ` OR EXISTS (SELECT 1 FROM idea_variants v WHERE v.idea_id = i.id` +
+        ` AND (v.title LIKE ${bind(like)} ESCAPE '\\' OR v.angle LIKE ${bind(like)} ESCAPE '\\')))`,
     );
   }
   if (filters.tag) {

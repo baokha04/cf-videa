@@ -66,15 +66,18 @@ export function ideaCard(idea) {
     ? ''
     : '<span class="chip pending" title="Chưa nằm trong tìm kiếm ngữ nghĩa">chưa index</span>';
   const liked = idea.liked ? '<span class="chip">♥ đã thích</span>' : '';
+  const variants = idea.variant_count > 0
+    ? `<span class="chip">${idea.variant_count} biến thể</span>`
+    : '';
 
   return `<article class="card idea">
     <h3><a href="/idea?id=${encodeURIComponent(idea.id)}">${esc(idea.title)}</a></h3>
-    ${idea.hook ? `<p class="hook">${esc(idea.hook)}</p>` : ''}
+    ${idea.script_outline ? `<p class="hook">${esc(idea.script_outline.slice(0, 140))}</p>` : ''}
     <div class="meta">
       <span class="chip">${esc(platformLabel(idea.platform))}</span>
       <span class="chip">${esc(statusLabel(idea.status))}</span>
       ${idea.niche ? `<span class="chip">${esc(idea.niche)}</span>` : ''}
-      ${tags}${liked}${score}${pending}
+      ${variants}${tags}${liked}${score}${pending}
     </div>
   </article>`;
 }

@@ -46,7 +46,6 @@ export interface IdeaRow {
   id: string;
   user_id: string;
   title: string;
-  hook: string;
   script_outline: string;
   platform: Platform;
   niche: string;
@@ -68,7 +67,6 @@ export interface IdeaRow {
 export interface IdeaDto {
   id: string;
   title: string;
-  hook: string;
   script_outline: string;
   platform: Platform;
   niche: string;
@@ -76,6 +74,8 @@ export interface IdeaDto {
   visibility: Visibility;
   tags: string[];
   liked: boolean;
+  /** Số biến thể — hiển thị trên thẻ ý tưởng. */
+  variant_count: number;
   /** Vector trên Vectorize đã khớp với hàng D1 này chưa. */
   indexed: boolean;
   created_at: number;

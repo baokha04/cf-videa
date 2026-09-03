@@ -76,6 +76,50 @@ reindex toàn bộ.
 
 ---
 
+## Mô hình dữ liệu
+
+```
+ý tưởng gốc  ──┬── nhiều BIẾN THỂ (tên, góc nhìn, dàn ý riêng)
+               │
+thư viện HOOK ─┘   (dùng chung, có nhóm danh mục)
+```
+
+**Hook không thuộc về ý tưởng nào.** Nó nằm trong một thư viện dùng chung, chia theo
+danh mục do bạn tự đặt (Câu hỏi, Con số, Phản đề…). Cột `hook` trên bảng `ideas` đã
+bị bỏ (migration 0005).
+
+**Biến thể không gắn cứng hook.** Hook được chọn tại thời điểm sinh prompt, nên n biến
+thể × m hook cho ra n×m prompt khả dĩ mà không phải nhân bản dữ liệu. Đó là lý do
+`idea_variants` không có cột `hook_id`.
+
+**Prompt = mẫu + (ý tưởng gốc + hook + biến thể).** Không có AI ở bước này: đây là
+phép thay chuỗi thuần tuý trên mẫu bạn sở hữu, nên cùng đầu vào luôn ra cùng kết quả
+và đọc mẫu là biết trước prompt sẽ ra sao. Biến dùng được:
+
+`{{idea_title}}` `{{variant_title}}` `{{variant_angle}}` `{{hook}}` `{{hook_category}}`
+`{{script}}` `{{niche}}` `{{platform}}` `{{status}}` `{{tags}}`
+
+Hai quy tắc đáng nhớ:
+
+- **`{{script}}` lấy dàn ý riêng của biến thể; để trống thì kế thừa dàn ý của ý tưởng
+  gốc.** Nhờ vậy biến thể vừa gọn khi chỉ cần đổi góc nhìn, vừa đầy đủ khi cần kịch
+  bản khác hẳn.
+- **Biến gõ sai được GIỮ NGUYÊN trong prompt, không xoá âm thầm.** Bị xoá thì bạn chỉ
+  thấy prompt thiếu một mảng và không hiểu vì sao; để nguyên `{{tieu_de}}` là tự nó
+  chỉ ra lỗi. `GET /api/prompt-template` cũng trả danh sách biến lạ để giao diện cảnh báo.
+
+Mẫu mặc định để **nội dung tiếng Việt, nhãn cấu trúc tiếng Anh** (Concept, Hook,
+Angle, Script outline…): các công cụ video AI dựa vào những nhãn đó để hiểu bố cục
+prompt và nhận diện tiếng Anh tốt hơn hẳn, trong khi nội dung sáng tạo để nguyên
+tiếng Việt vẫn tốt hơn dịch máy. Sửa mẫu ở trang **Tài khoản**.
+
+**Biến thể tham gia vào tìm kiếm.** Tiêu đề và góc nhìn của biến thể nằm trong văn bản
+đem đi nhúng, và tìm từ khoá trên D1 cũng quét sang bảng biến thể — người ta thường
+nhớ góc triển khai chứ không nhớ tiêu đề gốc. Hệ quả: **thêm hoặc sửa biến thể làm ý
+tưởng gốc "chưa đồng bộ" trở lại**, đúng như sửa nội dung ý tưởng (`src/content.ts`).
+Hook thì KHÔNG nằm trong văn bản nhúng — nó là thư viện dùng chung, không thuộc ý
+tưởng nào, nên không được ảnh hưởng tới việc tìm ý tưởng.
+
 ## Khởi tạo hạ tầng
 
 ```bash
@@ -199,7 +243,7 @@ và làm thao tác lưu nhanh hơn nhiều.
 
 | Thay đổi | Cột lệch | Việc đồng bộ phải làm |
 |---|---|---|
-| Sửa tiêu đề, hook, kịch bản, niche, tag, nền tảng | `embedded_hash` ≠ `content_hash` | nhúng lại rồi upsert |
+| Sửa tiêu đề, kịch bản, niche, tag, nền tảng, **hoặc biến thể** | `embedded_hash` ≠ `content_hash` | nhúng lại rồi upsert |
 | Chỉ đổi **trạng thái** | `indexed_meta_hash` ≠ chữ ký hiện tại | lấy lại vector cũ, ghi đè metadata |
 
 Loại thứ hai là cái bẫy: `status` nằm trong metadata của vector nhưng KHÔNG nằm trong
@@ -337,6 +381,14 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | POST | `/api/auth/revoke-all` | ✓ | Giữ lại phiên hiện tại |
 | GET | `/api/ideas` | ✓ | Lọc + tìm từ khoá, phân trang keyset |
 | POST | `/api/ideas` | ✓ | **Chỉ ghi D1**, không nhúng, không đụng Vectorize |
+| GET · POST | `/api/hook-categories` | ✓ | Danh mục hook; trùng tên trả 400 |
+| PATCH · DELETE | `/api/hook-categories/:id` | ✓ | Xoá danh mục KHÔNG xoá hook bên trong |
+| GET · POST | `/api/hooks` | ✓ | `?category=<id>` hoặc `?category=none` |
+| PATCH · DELETE | `/api/hooks/:id` | ✓ | |
+| GET · POST | `/api/ideas/:id/variants` | ✓ | Biến thể của một ý tưởng gốc |
+| PATCH · DELETE | `/api/variants/:id` | ✓ | |
+| GET | `/api/prompt` | ✓ | `?variant_id=&hook_id=` — hook để trống vẫn ghép được |
+| GET · PUT · DELETE | `/api/prompt-template` | ✓ | Đọc / lưu / đưa về mặc định |
 | GET · PATCH · DELETE | `/api/ideas/:id` | ✓ | 404 khi không phải của bạn |
 | POST · DELETE | `/api/ideas/:id/like` | ✓ | Idempotent |
 | GET | `/api/ideas/:id/similar` | ✓ | Dùng lại vector đã lưu |

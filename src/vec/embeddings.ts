@@ -1,4 +1,4 @@
-import type { Env, IdeaRow } from '../types';
+import type { Env } from '../types';
 import { sha256Hex } from '../util/hash';
 
 /**
@@ -12,23 +12,7 @@ export const MODEL_ID = '@cf/baai/bge-m3';
 export const DIMENSIONS = 1024;
 
 /** Giới hạn độ dài để một ý tưởng dài không nuốt trọn cửa sổ ngữ cảnh. */
-const MAX_EMBED_CHARS = 4000;
-
-/**
- * Văn bản đem đi nhúng. Một nguồn sự thật duy nhất: cả lúc ghi, lúc đối soát và
- * lúc tính content_hash đều đi qua hàm này, nên hash không bao giờ lệch với vector.
- */
-export function buildEmbedText(idea: Pick<IdeaRow, 'title' | 'hook' | 'script_outline' | 'niche' | 'platform'>, tags: string[]): string {
-  const parts = [
-    idea.title,
-    idea.hook,
-    idea.script_outline,
-    idea.niche ? `Niche: ${idea.niche}` : '',
-    `Nền tảng: ${idea.platform}`,
-    tags.length ? `Tags: ${tags.join(', ')}` : '',
-  ].filter(Boolean);
-  return parts.join('\n').slice(0, MAX_EMBED_CHARS);
-}
+export const MAX_EMBED_CHARS = 4000;
 
 /**
  * Gộp MODEL_ID vào hash là chi tiết quan trọng: đổi model thì mọi content_hash

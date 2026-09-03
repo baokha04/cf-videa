@@ -22,9 +22,6 @@
       <label for="title">Tiêu đề</label>
       <input id="title" maxlength="200" required>
 
-      <label for="hook">Hook <span class="muted small">(3 giây đầu giữ chân người xem)</span></label>
-      <input id="hook" maxlength="500">
-
       <div class="row">
         <div>
           <label for="platform">Nền tảng</label>
@@ -66,6 +63,64 @@
     </form>
     <p id="msg" class="msg"></p>
   </div>
+
+  <section id="variants-wrap" hidden>
+    <h2>Ý tưởng biến thể</h2>
+    <p class="sub">
+      Cùng chủ đề, khác góc triển khai. Để trống dàn ý riêng thì biến thể dùng dàn ý
+      của ý tưởng gốc.
+    </p>
+
+    <div class="card">
+      <form id="vform">
+        <label for="vtitle">Tên biến thể</label>
+        <input id="vtitle" maxlength="200" placeholder="Phiên bản POV, phiên bản phản đề…">
+
+        <label for="vangle">Góc nhìn</label>
+        <input id="vangle" maxlength="1000" placeholder="Quay từ góc nhìn người đang ăn">
+
+        <label for="vscript">
+          Dàn ý riêng <span class="muted small">(bỏ trống để dùng dàn ý gốc)</span>
+        </label>
+        <textarea id="vscript" maxlength="8000"></textarea>
+
+        <div class="actions">
+          <button class="primary" type="submit" id="vsave">Thêm biến thể</button>
+          <button type="button" id="vcancel" hidden>Huỷ sửa</button>
+        </div>
+      </form>
+      <p id="vmsg" class="msg"></p>
+    </div>
+
+    <div id="variants" class="list"></div>
+  </section>
+
+  <section id="prompt-wrap" hidden>
+    <h2>Tạo prompt</h2>
+    <p class="sub">
+      Chọn một biến thể và một hook — mỗi cặp cho ra một prompt khác nhau. Sửa mẫu
+      prompt ở trang <a href="/account">Tài khoản</a>.
+    </p>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="pvariant">Biến thể</label>
+          <select id="pvariant"></select>
+        </div>
+        <div>
+          <label for="phook">Hook</label>
+          <select id="phook"><option value="">— Không dùng hook —</option></select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="primary" type="button" id="pgen">Tạo prompt</button>
+        <button type="button" id="pcopy" hidden>Chép</button>
+      </div>
+      <p id="pmsg" class="msg"></p>
+      <pre id="pout" class="prompt-out" hidden></pre>
+    </div>
+  </section>
 
   <section id="similar-wrap" hidden>
     <h2>Ý tưởng tương tự</h2>

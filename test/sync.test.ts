@@ -15,7 +15,6 @@ import type { Env } from '../src/types';
 
 const BASE = {
   title: 'Mẹo quay phim',
-  hook: 'hook',
   script_outline: 'dàn ý',
   platform: 'tiktok' as const,
   niche: 'phim',

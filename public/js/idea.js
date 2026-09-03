@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, renderList, show } from './ui.js';
+import { $, esc, renderList, show } from './ui.js';
 import { mountNav } from './nav.js';
 
 await mountNav('/app');
@@ -21,11 +21,16 @@ const likeBtn = $('#like');
 const delBtn = $('#del');
 
 let liked = false;
+// Khai báo Ở ĐÂY chứ không phải cạnh các hàm dùng chúng: `let` nằm trong vùng chết
+// tạm thời cho tới khi dòng khai báo được chạy, nên đặt sau đoạn nạp trang thì
+// loadVariants() sẽ ném ReferenceError ngay lần chạy đầu — và vì lời gọi đó nằm
+// trong try/catch, lỗi bị nuốt và các bước sau đó âm thầm không chạy.
+let variants = [];
+let editingVariant = null;
 
 function readForm() {
   return {
     title: $('#title').value.trim(),
-    hook: $('#hook').value.trim(),
     script_outline: $('#script_outline').value,
     platform: $('#platform').value,
     status: $('#status').value,
@@ -39,7 +44,6 @@ function readForm() {
 
 function fill(idea) {
   $('#title').value = idea.title;
-  $('#hook').value = idea.hook;
   $('#script_outline').value = idea.script_outline;
   $('#platform').value = idea.platform;
   $('#status').value = idea.status;
@@ -76,10 +80,164 @@ if (!isNew) {
     if (new URLSearchParams(location.search).get('created') === '1') {
       show(msg, CREATED_MSG, 'ok');
     }
+    $('#variants-wrap').hidden = false;
+    $('#prompt-wrap').hidden = false;
+    await loadVariants();
+    await loadHooks();
     void loadSimilar();
   } catch (err) {
     show(msg, err.message);
   }
+}
+
+// --- Biến thể --------------------------------------------------------------
+
+function variantCard(v) {
+  return `<article class="card variant">
+    <h3>${esc(v.title)}</h3>
+    ${v.angle ? `<p class="hook">${esc(v.angle)}</p>` : ''}
+    <div class="meta">
+      <span class="chip">${v.script_outline.trim() ? 'dàn ý riêng' : 'dùng dàn ý gốc'}</span>
+      <button class="link" type="button" data-vedit="${esc(v.id)}">Sửa</button>
+      <button class="link" type="button" data-vdel="${esc(v.id)}">Xoá</button>
+    </div>
+  </article>`;
+}
+
+async function loadVariants() {
+  const data = await get(`/api/ideas/${encodeURIComponent(id)}/variants`);
+  variants = data.variants;
+  $('#variants').innerHTML = variants.length
+    ? variants.map(variantCard).join('')
+    : '<p class="empty">Chưa có biến thể nào. Thêm biến thể đầu tiên ở trên.</p>';
+
+  const sel = $('#pvariant');
+  const keep = sel.value;
+  sel.innerHTML = variants.map((v) => `<option value="${esc(v.id)}">${esc(v.title)}</option>`).join('');
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  // Không có biến thể thì không ghép được prompt — nói rõ thay vì để nút chết câm.
+  $('#pgen').disabled = variants.length === 0;
+  show($('#pmsg'), variants.length ? '' : 'Thêm ít nhất một biến thể để tạo prompt.',
+       variants.length ? 'ok' : 'note');
+}
+
+async function loadHooks() {
+  try {
+    const [{ hooks }, { categories }] = await Promise.all([
+      get('/api/hooks'),
+      get('/api/hook-categories'),
+    ]);
+    const nameOf = new Map(categories.map((c) => [c.id, c.name]));
+    const sel = $('#phook');
+    sel.innerHTML = '<option value="">— Không dùng hook —</option>'
+      + hooks.map((h) => {
+          const cat = nameOf.get(h.category_id) ?? 'Chưa phân loại';
+          const short = h.text.length > 60 ? `${h.text.slice(0, 60)}…` : h.text;
+          return `<option value="${esc(h.id)}">[${esc(cat)}] ${esc(short)}</option>`;
+        }).join('');
+  } catch (err) {
+    // Vẫn tạo được prompt không hook, nhưng phải NÓI ra. Nuốt lỗi ở đây từng khiến
+    // ô chọn hook rỗng mà không có dấu hiệu gì.
+    show($('#pmsg'), `Không tải được thư viện hook: ${err.message}`, 'note');
+  }
+}
+
+function resetVariantForm() {
+  editingVariant = null;
+  $('#vtitle').value = '';
+  $('#vangle').value = '';
+  $('#vscript').value = '';
+  $('#vsave').textContent = 'Thêm biến thể';
+  $('#vcancel').hidden = true;
+}
+
+if (!isNew) {
+  $('#vform').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      title: $('#vtitle').value.trim(),
+      angle: $('#vangle').value.trim(),
+      script_outline: $('#vscript').value,
+    };
+    if (!body.title) {
+      show($('#vmsg'), 'Tên biến thể không được để trống.');
+      return;
+    }
+    try {
+      if (editingVariant) {
+        await patch(`/api/variants/${encodeURIComponent(editingVariant)}`, body);
+      } else {
+        await post(`/api/ideas/${encodeURIComponent(id)}/variants`, body);
+      }
+      resetVariantForm();
+      await loadVariants();
+      // Biến thể nằm trong văn bản đem đi nhúng, nên ý tưởng vừa trở lại "chưa đồng bộ".
+      show($('#vmsg'), 'Đã lưu. Nhớ bấm "Đồng bộ index" ở trang kho ý tưởng.', 'note');
+    } catch (err) {
+      show($('#vmsg'), err.message);
+    }
+  });
+
+  $('#vcancel').addEventListener('click', resetVariantForm);
+
+  $('#variants').addEventListener('click', async (e) => {
+    const editId = e.target?.dataset?.vedit;
+    const delId = e.target?.dataset?.vdel;
+    if (editId) {
+      const v = variants.find((x) => x.id === editId);
+      if (!v) return;
+      editingVariant = v.id;
+      $('#vtitle').value = v.title;
+      $('#vangle').value = v.angle;
+      $('#vscript').value = v.script_outline;
+      $('#vsave').textContent = 'Lưu biến thể';
+      $('#vcancel').hidden = false;
+      $('#vtitle').focus();
+      return;
+    }
+    if (delId) {
+      if (!confirm('Xoá biến thể này?')) return;
+      try {
+        await del(`/api/variants/${encodeURIComponent(delId)}`);
+        resetVariantForm();
+        await loadVariants();
+      } catch (err) {
+        show($('#vmsg'), err.message);
+      }
+    }
+  });
+
+  // --- Sinh prompt ---------------------------------------------------------
+
+  $('#pgen').addEventListener('click', async () => {
+    const vid = $('#pvariant').value;
+    if (!vid) return;
+    const hid = $('#phook').value;
+    $('#pgen').disabled = true;
+    try {
+      const q = new URLSearchParams({ variant_id: vid });
+      if (hid) q.set('hook_id', hid);
+      const r = await get(`/api/prompt?${q.toString()}`);
+      $('#pout').textContent = r.prompt;
+      $('#pout').hidden = false;
+      $('#pcopy').hidden = false;
+      show($('#pmsg'), '');
+    } catch (err) {
+      show($('#pmsg'), err.message);
+    } finally {
+      $('#pgen').disabled = false;
+    }
+  });
+
+  $('#pcopy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('#pout').textContent);
+      show($('#pmsg'), 'Đã chép prompt vào clipboard.', 'ok');
+    } catch {
+      // clipboard cần ngữ cảnh bảo mật và quyền; hỏng thì bảo người dùng tự bôi đen.
+      show($('#pmsg'), 'Trình duyệt không cho chép tự động — hãy bôi đen và chép tay.', 'note');
+    }
+  });
 }
 
 $('#f').addEventListener('submit', async (e) => {

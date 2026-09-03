@@ -376,3 +376,48 @@ th { color: var(--muted); font-weight: 550; font-size: 13px; }
 
 /* Hàng chứa nút giao diện trên các trang không có thanh điều hướng. */
 .topbar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+
+/* --- Thư viện hook -------------------------------------------------------- */
+.chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip.cat { display: inline-flex; align-items: center; gap: 6px; padding-right: 4px; }
+.chip-x {
+  min-height: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chip-x:hover { color: var(--danger); }
+
+.hook .hook-text { margin: 0 0 10px; white-space: pre-wrap; }
+.variant h3 { margin: 0 0 4px; font-size: 16px; }
+
+/* --- Prompt --------------------------------------------------------------- */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+}
+textarea.tall { min-height: 300px; }
+
+.prompt-out {
+  margin: 14px 0 0;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  /* Prompt là văn bản dài có xuống dòng — bọc lại thay vì bắt cuộn ngang trên điện thoại. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 60vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}

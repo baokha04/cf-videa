@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover: cho phép nội dung tràn ra sát mép màn hình iPhone; CSS
+     dùng env(safe-area-inset-*) để tránh Dynamic Island và thanh home. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Thư viện hook · cf-videa</title>
+<link rel="stylesheet" href="/css/app.css">
+<!-- Đồng bộ, KHÔNG defer: phải áp giao diện trước khung hình đầu tiên để không nháy. -->
+<script src="/js/theme-init.js"></script>
+</head>
+<body>
+<main>
+  <h1>Thư viện hook</h1>
+  <p class="sub">
+    Hook dùng chung cho mọi ý tưởng. Lúc tạo prompt bạn ghép bất kỳ hook nào với bất kỳ
+    biến thể nào, nên không cần chép lại hook cho từng ý tưởng.
+  </p>
+
+  <h2>Danh mục</h2>
+  <div class="card">
+    <form id="catform">
+      <div class="row">
+        <div>
+          <label for="catname">Tên danh mục mới</label>
+          <input id="catname" maxlength="60" placeholder="Câu hỏi, Con số, Phản đề…">
+        </div>
+        <div class="shrink">
+          <label>&nbsp;</label>
+          <button type="submit">Thêm danh mục</button>
+        </div>
+      </div>
+    </form>
+    <div id="cats" class="chips-row"></div>
+    <p id="catmsg" class="msg"></p>
+  </div>
+
+  <h2>Hook</h2>
+  <div class="card">
+    <form id="hookform">
+      <label for="htext">Nội dung hook</label>
+      <textarea id="htext" maxlength="500" required
+                placeholder="Bạn đang cầm điện thoại sai cách suốt bao năm nay…"></textarea>
+
+      <div class="row">
+        <div>
+          <label for="hcat">Danh mục</label>
+          <select id="hcat"><option value="">Chưa phân loại</option></select>
+        </div>
+        <div>
+          <label for="hnote">Ghi chú <span class="muted small">(không bắt buộc)</span></label>
+          <input id="hnote" maxlength="300" placeholder="hợp với video mẹo vặt">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" type="submit" id="hsave">Thêm hook</button>
+        <button type="button" id="hcancel" hidden>Huỷ sửa</button>
+      </div>
+    </form>
+    <p id="hookmsg" class="msg"></p>
+  </div>
+
+  <div class="row spaced">
+    <div>
+      <label for="filter">Lọc theo danh mục</label>
+      <select id="filter"><option value="">Tất cả</option></select>
+    </div>
+  </div>
+
+  <div id="list" class="list"><p class="empty">Đang tải…</p></div>
+</main>
+<script type="module" src="/js/hooks.js"></script>
+</body>
+</html>

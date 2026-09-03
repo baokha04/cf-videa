@@ -5,6 +5,14 @@ import * as ideasDb from '../db/ideas';
 import { recordMaintenanceRun, sweepExpiredSessions } from '../auth/session';
 import { sweepRateLimits } from '../auth/ratelimit';
 import { drainVectorGc, reconcile } from '../vec/sync';
+import {
+  DEFAULT_TEMPLATE,
+  TEMPLATE_VARS,
+  getTemplate,
+  resetTemplate,
+  saveTemplate,
+  unknownVars,
+} from '../prompt';
 
 export async function health(c: Ctx): Promise<Response> {
   const out: Record<string, unknown> = { ok: true, env: c.env.APP_ENV };
@@ -41,6 +49,42 @@ export async function health(c: Ctx): Promise<Response> {
   out['ai'] = c.env.AI ? 'bound' : 'MISSING';
   if (!c.env.VEC || !c.env.AI) out['ok'] = false;
   return c.json(out, out['ok'] ? 200 : 503);
+}
+
+/**
+ * Mẫu prompt của người dùng. Chưa từng sửa thì trả mẫu mặc định — giao diện không
+ * cần biết phân biệt hai trường hợp đó.
+ */
+export async function getPromptTemplate(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  const body = await getTemplate(c.env, user.id);
+  return c.json({
+    body,
+    is_default: body === DEFAULT_TEMPLATE,
+    variables: TEMPLATE_VARS,
+    unknown: unknownVars(body),
+  });
+}
+
+export async function savePromptTemplate(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  const body = await readJson(c);
+  const text = body['body'];
+  if (typeof text !== 'string' || text.trim() === '') {
+    throw badRequest('invalid_template', 'Mẫu prompt không được để trống.');
+  }
+  if (text.length > 20_000) {
+    throw badRequest('invalid_template', 'Mẫu prompt tối đa 20.000 ký tự.');
+  }
+  await saveTemplate(c.env, user.id, text);
+  // Trả về danh sách biến lạ để giao diện cảnh báo gõ sai tên biến ngay lúc lưu.
+  return c.json({ ok: true, unknown: unknownVars(text) });
+}
+
+export async function resetPromptTemplate(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  await resetTemplate(c.env, user.id);
+  return c.json({ body: DEFAULT_TEMPLATE, is_default: true });
 }
 
 /**

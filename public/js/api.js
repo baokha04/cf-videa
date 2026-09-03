@@ -52,4 +52,5 @@ export async function api(path, { method = 'GET', body, redirectOn401 = true } =
 export const get = (p) => api(p);
 export const post = (p, body) => api(p, { method: 'POST', body: body ?? {} });
 export const patch = (p, body) => api(p, { method: 'PATCH', body });
+export const put = (p, body) => api(p, { method: 'PUT', body });
 export const del = (p) => api(p, { method: 'DELETE' });
