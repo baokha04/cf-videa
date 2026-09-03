@@ -409,6 +409,21 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 
 **HTML tĩnh + ES module thuần, không có bước build** — xem phần Frontend ở trên.
 
+**Màn hình đầu tiên là đăng nhập, không có trang chuyển hướng.** `/` chính là trang
+đăng nhập (`public/index.html`) — khung hình đầu tiên đã có ô nhập, gõ được ngay.
+
+Trước đây `/` là một trang trung gian hiện chữ "Đang chuyển hướng…", gọi
+`/api/auth/me` rồi mới quyết định đi `/app` hay `/login`. Nghĩa là mọi lần mở ứng dụng
+đều phải nhìn một màn hình rỗng trong lúc chờ mạng, và người chưa đăng nhập còn tốn
+thêm một lần tải trang nữa mới thấy được ô nhập.
+
+Việc đưa người đã có phiên vào thẳng `/app` vẫn còn, nhưng chạy **ngầm** trong
+`public/js/auth-pages.js` và không chặn hiển thị. Không còn `login.html`:
+`public/_redirects` trả 302 `/login` → `/` để link và dấu trang cũ không gãy, còn
+frontend thì không chỗ nào trỏ tới `/login` nữa. `nextUrl()` loại luôn `?next=/` và
+`?next=/login` — trỏ ngược về chính trang đăng nhập sẽ thành vòng lặp vô hạn với
+người đã đăng nhập.
+
 **Chuyển sáng/tối.** Nút trên thanh điều hướng (và trên trang đăng nhập/đăng ký) chạy
 vòng: theo hệ thống → sáng → tối. Giữ lại lựa chọn "theo hệ thống" chứ không chỉ hai
 trạng thái, vì đó là hành vi mặc định trước đây.

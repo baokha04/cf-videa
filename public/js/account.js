@@ -156,7 +156,7 @@ $('#logout').addEventListener('click', async () => {
   try {
     await post('/api/auth/logout');
   } finally {
-    location.replace('/login');
+    location.replace('/');
   }
 });
 

@@ -1,0 +1,8 @@
+# Trang đăng nhập đã dời về `/` (xem public/index.html). Giữ lại /login cho link
+# và dấu trang cũ — 302 chứ không 301 để còn đổi lại được mà không mắc kẹt trong
+# cache vĩnh viễn của trình duyệt.
+#
+# Đây là chuyển hướng ở PHÍA MÁY CHỦ: trình duyệt đi thẳng, không có khung hình
+# trung gian nào được vẽ ra. Cả frontend không còn chỗ nào trỏ tới /login nữa,
+# nên chuỗi ?next= không đi qua đây.
+/login  /  302

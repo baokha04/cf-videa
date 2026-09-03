@@ -28,7 +28,8 @@ export async function api(path, { method = 'GET', body, redirectOn401 = true } =
 
   if (res.status === 401 && redirectOn401) {
     const back = encodeURIComponent(location.pathname + location.search);
-    location.href = `/login?next=${back}`;
+    // Trang đăng nhập là `/`, không phải /login — xem public/index.html.
+    location.href = `/?next=${back}`;
     // Dừng luồng gọi hiện tại lại trong lúc trình duyệt chuyển trang.
     throw new ApiError(401, 'unauthenticated', 'Cần đăng nhập.');
   }

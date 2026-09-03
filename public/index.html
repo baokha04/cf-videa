@@ -7,25 +7,55 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>cf-videa</title>
+<title>Đăng nhập · cf-videa</title>
 <link rel="stylesheet" href="/css/app.css">
 <!-- Đồng bộ, KHÔNG defer: phải áp giao diện trước khung hình đầu tiên để không nháy. -->
 <script src="/js/theme-init.js"></script>
 </head>
 <body>
+<!--
+  `/` CHÍNH LÀ trang đăng nhập, không phải một trang trung gian đứng chờ rồi đá đi.
+
+  Trước đây ở đây là một màn hình "Đang chuyển hướng…" gọi /api/auth/me rồi mới
+  quyết định đi /app hay /login. Nghĩa là mọi lần mở ứng dụng đều phải nhìn một
+  màn hình rỗng trong lúc chờ mạng, còn người chưa đăng nhập — số đông ở màn hình
+  đầu tiên — còn tốn thêm một lần tải trang nữa mới thấy được ô nhập.
+
+  Nay khung hình đầu tiên đã là ô đăng nhập, gõ được ngay, không chờ gì cả. Việc
+  đưa người đã đăng nhập vào thẳng /app vẫn còn, nhưng chạy NGẦM ở public/js/auth-pages.js
+  chứ không chặn hiển thị. Đổi lại, không còn file login.html: /login được
+  public/_redirects trả 302 về đây để link cũ không gãy.
+-->
 <main class="narrow">
-  <h1>cf-videa</h1>
-  <p class="sub">Đang chuyển hướng…</p>
-  <p><a href="/login">Đăng nhập</a> · <a href="/register">Đăng ký</a></p>
+  <div class="topbar" id="themebar"></div>
+  <h1>Đăng nhập</h1>
+  <p class="sub">Kho ý tưởng short video của bạn.</p>
+  <div class="card">
+    <form id="f" novalidate>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required>
+
+      <label for="password">Mật khẩu</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+
+      <label class="check" for="remember">
+        <input id="remember" name="remember" type="checkbox">
+        <span>
+          Ghi nhớ đăng nhập
+          <span class="hint">Bỏ trống nếu đang dùng máy chung — đóng trình duyệt là tự đăng xuất.</span>
+        </span>
+      </label>
+
+      <div class="actions">
+        <button class="primary" type="submit" id="submit">Đăng nhập</button>
+      </div>
+    </form>
+    <p id="msg" class="msg"></p>
+  </div>
+  <p class="small muted spaced">
+    Chưa có tài khoản? <a href="/register">Đăng ký</a>
+  </p>
 </main>
-<script type="module">
-  import { get } from '/js/api.js';
-  // redirectOn401 = false: ở đây 401 là câu trả lời hợp lệ ("chưa đăng nhập"),
-  // không phải lỗi cần đá về trang login kèm ?next.
-  get('/api/auth/me').then(
-    () => location.replace('/app'),
-    () => location.replace('/login'),
-  );
-</script>
+<script type="module" src="/js/auth-pages.js"></script>
 </body>
 </html>
