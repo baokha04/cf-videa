@@ -1,4 +1,4 @@
-import { del, get, post } from './api.js';
+import { del, get, patch, post } from './api.js';
 import { $, esc, show } from './ui.js';
 import { mountNav } from './nav.js';
 
@@ -8,6 +8,10 @@ const listEl = $('#list');
 const msgEl = $('#msg');
 const moreBtn = $('#more');
 const scopeEl = $('#scope');
+const vmsg = $('#vmsg');
+
+// null = đang ở chế độ thêm mới; có giá trị = đang sửa biến thể đó.
+let editingId = null;
 
 let cursor = null;
 let items = [];
@@ -17,6 +21,47 @@ let items = [];
 // Bộ lọc theo ý tưởng gốc đọc thẳng từ URL: chip trên thẻ là một liên kết thật, nên
 // trạng thái lọc chia sẻ được, tải lại được, và nút Back của trình duyệt chạy đúng.
 const ideaFilter = new URLSearchParams(location.search).get('idea');
+
+/**
+ * Đổ ô chọn ý tưởng gốc. Dùng /api/ideas/titles chứ không phải /api/ideas: cái sau
+ * phân trang tối đa 50 nên ô chọn sẽ âm thầm thiếu ý tưởng.
+ */
+async function loadIdeaOptions() {
+  const sel = $('#videa');
+  try {
+    const { ideas, truncated, limit } = await get('/api/ideas/titles');
+    const keep = sel.value;
+    sel.innerHTML = ideas.length
+      ? ideas.map((i) => `<option value="${esc(i.id)}">${esc(i.title)}</option>`).join('')
+      : '<option value="">— Chưa có ý tưởng gốc nào —</option>';
+    // Ưu tiên giữ lựa chọn cũ; nếu chưa chọn gì mà đang lọc theo một ý tưởng thì
+    // mặc định vào chính ý tưởng đó — gần như luôn là thứ người dùng đang muốn thêm.
+    const want = keep || ideaFilter;
+    if (want && [...sel.options].some((o) => o.value === want)) sel.value = want;
+
+    const note = $('#videa-note');
+    note.hidden = !truncated;
+    if (truncated) {
+      note.textContent =
+        `Chỉ hiện ${limit} ý tưởng gần đây nhất. Muốn thêm biến thể cho ý tưởng cũ hơn `
+        + 'thì mở thẳng ý tưởng đó rồi thêm từ trang của nó.';
+    }
+    return ideas.length > 0;
+  } catch (err) {
+    show(vmsg, `Không tải được danh sách ý tưởng gốc: ${err.message}`);
+    return false;
+  }
+}
+
+function resetForm() {
+  editingId = null;
+  $('#vtitle').value = '';
+  $('#vangle').value = '';
+  $('#vscript').value = '';
+  $('#videa').disabled = false;
+  $('#vsave').textContent = 'Thêm biến thể';
+  $('#vcancel').hidden = true;
+}
 
 function query(withCursor) {
   const p = new URLSearchParams();
@@ -42,7 +87,7 @@ function card(v) {
       <span class="chip">${script}</span>
       ${pending}
       <button class="link" type="button" data-index="${esc(v.id)}">Index</button>
-      <a class="link" href="/idea?id=${encodeURIComponent(v.idea_id)}">Sửa ở ý tưởng gốc</a>
+      <button class="link" type="button" data-edit="${esc(v.id)}">Sửa</button>
       <button class="link" type="button" data-del="${esc(v.id)}">Xoá</button>
     </div>
   </article>`;
@@ -75,6 +120,50 @@ async function load(append = false) {
   }
 }
 
+$('#vform').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const body = {
+    title: $('#vtitle').value.trim(),
+    angle: $('#vangle').value.trim(),
+    script_outline: $('#vscript').value,
+  };
+  if (!body.title) {
+    show(vmsg, 'Tên biến thể không được để trống.');
+    return;
+  }
+  const ideaId = $('#videa').value;
+  if (!editingId && !ideaId) {
+    show(vmsg, 'Hãy chọn ý tưởng gốc cho biến thể này.');
+    return;
+  }
+
+  $('#vsave').disabled = true;
+  try {
+    if (editingId) {
+      // Cố ý KHÔNG gửi idea_id: API không cho chuyển biến thể sang ý tưởng khác, và
+      // gửi một trường bị bỏ qua thì người dùng tưởng mình vừa chuyển được.
+      await patch(`/api/variants/${encodeURIComponent(editingId)}`, body);
+      show(vmsg, 'Đã lưu. Bấm "Index" trên thẻ để nó vào tìm kiếm.', 'note');
+    } else {
+      await post(`/api/ideas/${encodeURIComponent(ideaId)}/variants`, body);
+      show(vmsg, 'Đã thêm biến thể. Bấm "Index" trên thẻ để nó vào tìm kiếm.', 'note');
+    }
+    resetForm();
+    cursor = null;
+    await loadIdeaOptions();
+await load(false);
+  } catch (err) {
+    show(vmsg, err.message);
+  } finally {
+    $('#vsave').disabled = false;
+  }
+});
+
+$('#vcancel').addEventListener('click', () => {
+  resetForm();
+  show(vmsg, '');
+});
+
 $('#filters').addEventListener('submit', (e) => {
   e.preventDefault();
   cursor = null;
@@ -84,6 +173,26 @@ $('#filters').addEventListener('submit', (e) => {
 moreBtn.addEventListener('click', () => load(true));
 
 listEl.addEventListener('click', async (e) => {
+  const editId = e.target?.dataset?.edit;
+  if (editId) {
+    const v = items.find((x) => x.id === editId);
+    if (!v) return;
+    editingId = v.id;
+    $('#vtitle').value = v.title;
+    $('#vangle').value = v.angle;
+    $('#vscript').value = v.script_outline;
+    // Ý tưởng cha không đổi được: API không hỗ trợ chuyển biến thể sang ý tưởng khác.
+    // Vẫn hiện đúng ý tưởng hiện tại, nhưng khoá lại thay vì để người dùng đổi hụt.
+    if ([...$('#videa').options].some((o) => o.value === v.idea_id)) $('#videa').value = v.idea_id;
+    $('#videa').disabled = true;
+    $('#vsave').textContent = 'Lưu thay đổi';
+    $('#vcancel').hidden = false;
+    show(vmsg, `Đang sửa "${v.title}". Ý tưởng gốc không đổi được ở đây.`, 'note');
+    $('#vtitle').focus();
+    $('#vtitle').scrollIntoView({ block: 'center' });
+    return;
+  }
+
   const indexId = e.target?.dataset?.index;
   if (indexId) {
     e.target.disabled = true;
@@ -97,7 +206,8 @@ listEl.addEventListener('click', async (e) => {
       show(msgEl, err.message);
     }
     cursor = null;
-    await load(false);
+    await loadIdeaOptions();
+await load(false);
     return;
   }
 
@@ -106,13 +216,18 @@ listEl.addEventListener('click', async (e) => {
     if (!confirm('Xoá biến thể này? Ý tưởng gốc vẫn được giữ nguyên.')) return;
     try {
       await del(`/api/variants/${encodeURIComponent(delId)}`);
+      // Đang sửa đúng cái vừa xoá thì phải thoát chế độ sửa, nếu không lần bấm Lưu
+      // kế tiếp sẽ ném 404 mà người dùng không hiểu vì sao.
+      if (editingId === delId) resetForm();
       show(msgEl, 'Đã xoá biến thể.', 'ok');
     } catch (err) {
       show(msgEl, err.message);
     }
     cursor = null;
-    await load(false);
+    await loadIdeaOptions();
+await load(false);
   }
 });
 
+await loadIdeaOptions();
 await load(false);

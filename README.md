@@ -138,10 +138,19 @@ quyết định đáng nhớ, cả hai đều để tránh làm bẩn dây chuy�
   gốc vào cả n biến thể thì n vector xúm lại quanh một điểm và việc tìm theo góc triển
   khai hỏng hẳn.
 
-**Ba kho, ba trang.** `/app` cho ý tưởng gốc, `/variants` cho biến thể, `/hooks` cho hook —
-mỗi trang duyệt được độc lập và mỗi mục có nút Index của riêng nó. Biến thể *thuộc về* một
-ý tưởng gốc nên nó vẫn được tạo và sửa ở trang ý tưởng đó; `/variants` là nơi duyệt và tìm
-lại chúng khi bạn nhớ góc triển khai mà không nhớ nó nằm dưới ý tưởng nào.
+**Ba kho, ba trang, mỗi kho quản lý độc lập.** `/app` cho ý tưởng gốc, `/variants` cho biến
+thể, `/hooks` cho hook — mỗi trang **thêm, sửa, xoá và index** được ngay tại chỗ, không phải
+nhảy sang trang khác. Biến thể vẫn *thuộc về* một ý tưởng gốc, nên lúc tạo phải chọn ý tưởng
+cha; trang ý tưởng cũng vẫn thêm sửa biến thể được như trước, hai đường dẫn tới cùng một API.
+
+**Ô chọn ý tưởng cha dùng `GET /api/ideas/titles`, không phải `GET /api/ideas`.** Cái sau
+phân trang tối đa 50 nên một ô chọn dựng từ nó sẽ âm thầm thiếu ý tưởng, và người dùng không
+hiểu vì sao ý tưởng của mình biến mất khỏi danh sách. Endpoint riêng chỉ trả id + tiêu đề,
+có trần 500 và **cờ `truncated`** để giao diện nói thẳng khi chạm trần thay vì lặng lẽ cắt.
+
+**Sửa biến thể không đổi được ý tưởng cha.** API không hỗ trợ chuyển biến thể sang ý tưởng
+khác (`idea_id` nằm trong chữ ký metadata của vector), nên lúc sửa, ô chọn bị khoá lại thay
+vì để người dùng đổi hụt rồi tưởng đã đổi được.
 
 `GET /api/variants` JOIN sang `ideas` để trả kèm `idea_title` ngay trong một truy vấn —
 giao diện luôn cần nó, lấy riêng sẽ thành N+1. Điều kiện JOIN ràng buộc **cả** `user_id` của
@@ -515,6 +524,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | GET · POST | `/api/hooks` | ✓ | `?category=<id>` hoặc `?category=none` |
 | PATCH · DELETE | `/api/hooks/:id` | ✓ | |
 | POST | `/api/hooks/:id/index` | ✓ | Index đúng hook đó |
+| GET | `/api/ideas/titles` | ✓ | id + tiêu đề mọi ý tưởng cho ô chọn; trần 500 kèm cờ `truncated` |
 | GET | `/api/variants` | ✓ | **Kho biến thể** — toàn bộ biến thể, kèm `idea_title`; `?idea=` `?q=` `?cursor=` |
 | GET · POST | `/api/ideas/:id/variants` | ✓ | Biến thể của MỘT ý tưởng gốc |
 | PATCH · DELETE | `/api/variants/:id` | ✓ | |

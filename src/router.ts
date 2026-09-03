@@ -77,6 +77,9 @@ app.post('/auth/revoke-all', auth.revokeAll);
 
 app.get('/ideas', ideas.listIdeas);
 app.post('/ideas', ideas.createIdea);
+// PHẢI đứng trước '/ideas/:id', nếu không "titles" bị nuốt làm giá trị của :id và
+// endpoint này trả 404 "không tìm thấy ý tưởng" — sai mà trông rất giống đúng.
+app.get('/ideas/titles', ideas.listIdeaTitles);
 app.get('/ideas/:id', ideas.getIdea);
 app.patch('/ideas/:id', ideas.updateIdea);
 app.delete('/ideas/:id', ideas.deleteIdea);

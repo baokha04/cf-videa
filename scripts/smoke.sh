@@ -163,6 +163,16 @@ R=$(req GET "/api/ideas/$IDEA_ID/variants" "" "$TOKEN_A")
 expect "GET biến thể trả 200" 200 "$(code "$R")"
 
 # Kho biến thể: toàn bộ biến thể của người dùng, không bó theo một ý tưởng.
+R=$(req GET /api/ideas/titles "" "$TOKEN_A")
+expect "GET /api/ideas/titles trả 200" 200 "$(code "$R")"
+expect "titles có ý tưởng vừa tạo" "$IDEA_ID" "$(printf '%s' "$(body "$R")" | python3 -c 'import json,sys;print(json.load(sys.stdin)["ideas"][0]["id"])')"
+expect "chưa chạm trần thì truncated=false" "False" "$(printf '%s' "$(body "$R")" | python3 -c 'import json,sys;print(json.load(sys.stdin)["truncated"])')"
+# Đường dẫn này PHẢI được khớp trước '/ideas/:id', nếu không "titles" bị nuốt làm id.
+case "$(body "$R")" in
+  *'"ideas"'*) c_ok "/ideas/titles không bị '/ideas/:id' nuốt mất" ;;
+  *) c_bad "/ideas/titles bị route '/ideas/:id' nuốt" ;;
+esac
+
 R=$(req GET /api/variants "" "$TOKEN_A")
 expect "GET /api/variants (kho biến thể) trả 200" 200 "$(code "$R")"
 expect "kho biến thể có đúng 1 mục" 1 "$(printf '%s' "$(body "$R")" | tr ',' '\n' | grep -c '"idea_title"')"
