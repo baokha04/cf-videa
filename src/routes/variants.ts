@@ -9,7 +9,7 @@ import { computeVariantHash, touchIdeaContent } from '../content';
 import { deleteVectors, queueGc, vectorId } from '../vec/index';
 import { indexOne } from '../vec/sync';
 import { buildPrompt, getTemplate } from '../prompt';
-import { normText, requiredText } from '../util/validate';
+import { clampLimit, normText, requiredText } from '../util/validate';
 
 /**
  * Biến thể trả về cho client: bỏ các cột kế toán đồng bộ, thay bằng đúng một cờ
@@ -41,6 +41,33 @@ function parseInput(body: Record<string, unknown>, base?: variantsDb.VariantRow)
       : base.script_outline,
     sort_order: Number.isFinite(n) ? Math.trunc(n) : 0,
   };
+}
+
+/**
+ * KHO Ý TƯỞNG BIẾN THỂ — toàn bộ biến thể của người dùng, không bó theo một ý tưởng.
+ *
+ * Khác với listVariants() bên dưới (`GET /api/ideas/:id/variants`), vốn chỉ phục vụ
+ * mục biến thể trên trang một ý tưởng. Endpoint này là nguồn dữ liệu cho trang
+ * /variants, nơi biến thể được duyệt như một kho riêng ngang hàng với kho ý tưởng gốc
+ * và thư viện hook.
+ */
+export async function listAllVariants(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  const q = c.req.query();
+  const { rows, nextCursor } = await variantsDb.listAll(
+    c.env,
+    user.id,
+    {
+      ...(q['idea'] ? { ideaId: q['idea'] } : {}),
+      ...(q['q'] ? { q: normText(q['q'], 200, 'q') } : {}),
+    },
+    clampLimit(q['limit'] ?? null),
+    ideasDb.decodeCursor(q['cursor'] ?? null),
+  );
+  return c.json({
+    variants: rows.map((r) => ({ ...toDto(r), idea_title: r.idea_title })),
+    next_cursor: nextCursor,
+  });
 }
 
 export async function listVariants(c: Ctx): Promise<Response> {

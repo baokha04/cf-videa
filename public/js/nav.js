@@ -11,7 +11,8 @@ export async function mountNav(current) {
   const user = data.user;
 
   const links = [
-    ['/app', 'Kho ý tưởng'],
+    ['/app', 'Ý tưởng gốc'],
+    ['/variants', 'Biến thể'],
     ['/hooks', 'Hook'],
     ['/search', 'Tìm kiếm'],
     ['/recommend', 'Gợi ý'],

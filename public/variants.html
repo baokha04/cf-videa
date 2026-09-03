@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover: cho phép nội dung tràn ra sát mép màn hình iPhone; CSS
+     dùng env(safe-area-inset-*) để tránh Dynamic Island và thanh home. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Kho ý tưởng biến thể · cf-videa</title>
+<link rel="stylesheet" href="/css/app.css">
+<!-- Đồng bộ, KHÔNG defer: phải áp giao diện trước khung hình đầu tiên để không nháy. -->
+<script src="/js/theme-init.js"></script>
+</head>
+<body>
+<main>
+  <h1>Kho ý tưởng biến thể</h1>
+  <p class="sub">
+    Mọi biến thể của bạn, gom về một chỗ. Biến thể luôn thuộc về một ý tưởng gốc — tạo
+    và sửa nó ở trang ý tưởng đó, còn đây là nơi duyệt và tìm lại chúng.
+  </p>
+  <p class="sub">
+    Mỗi biến thể có vector riêng, index bằng nút <strong>Index</strong> trên chính thẻ
+    của nó. Muốn đồng bộ tất cả một lượt thì dùng nút "Đồng bộ index" ở
+    <a href="/app">trang kho ý tưởng</a> — nó chạy cho cả ba kho.
+  </p>
+
+  <div class="card">
+    <form id="filters">
+      <label for="q">Tìm trong tên, góc nhìn và dàn ý riêng</label>
+      <div class="row">
+        <div>
+          <input id="q" placeholder="góc nhìn người xem, phản đề…">
+        </div>
+        <div class="shrink">
+          <label>&nbsp;</label>
+          <button type="submit">Tìm</button>
+        </div>
+      </div>
+    </form>
+    <!-- Hiện khi đang lọc theo một ý tưởng gốc; bấm chip trên thẻ để vào trạng thái này. -->
+    <p id="scope" class="msg note" hidden></p>
+  </div>
+
+  <p id="msg" class="msg"></p>
+  <div id="list" class="list"><p class="empty">Đang tải…</p></div>
+  <div class="actions"><button id="more" type="button" hidden>Tải thêm</button></div>
+</main>
+<script type="module" src="/js/variants.js"></script>
+</body>
+</html>

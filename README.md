@@ -138,6 +138,21 @@ quyết định đáng nhớ, cả hai đều để tránh làm bẩn dây chuy�
   gốc vào cả n biến thể thì n vector xúm lại quanh một điểm và việc tìm theo góc triển
   khai hỏng hẳn.
 
+**Ba kho, ba trang.** `/app` cho ý tưởng gốc, `/variants` cho biến thể, `/hooks` cho hook —
+mỗi trang duyệt được độc lập và mỗi mục có nút Index của riêng nó. Biến thể *thuộc về* một
+ý tưởng gốc nên nó vẫn được tạo và sửa ở trang ý tưởng đó; `/variants` là nơi duyệt và tìm
+lại chúng khi bạn nhớ góc triển khai mà không nhớ nó nằm dưới ý tưởng nào.
+
+`GET /api/variants` JOIN sang `ideas` để trả kèm `idea_title` ngay trong một truy vấn —
+giao diện luôn cần nó, lấy riêng sẽ thành N+1. Điều kiện JOIN ràng buộc **cả** `user_id` của
+`ideas`, không chỉ của `idea_variants`: thừa về lý thuyết vì hai cột luôn bằng nhau, nhưng
+nếu một ngày nào đó chúng lệch thì đây là chỗ chặn chứ không phải chỗ rò rỉ.
+
+Lọc theo ý tưởng gốc trên `/variants` là một **liên kết** (`?idea=…`) chứ không phải nút:
+trạng thái lọc nhờ vậy chia sẻ được, tải lại được, và nút Back chạy đúng. Cố ý **không** làm
+ô chọn đổ sẵn danh sách ý tưởng — API phân trang tối đa 50 nên một ô như vậy sẽ âm thầm cụt
+khi người dùng có nhiều ý tưởng hơn thế.
+
 **Biến thể vẫn tham gia vào tìm kiếm ý tưởng.** Tiêu đề và góc nhìn của nó nằm trong văn
 bản nhúng của ý tưởng CHA, và tìm từ khoá trên D1 cũng quét sang bảng biến thể — người ta
 thường nhớ góc triển khai chứ không nhớ tiêu đề gốc. Hệ quả: **thêm hoặc sửa biến thể làm
@@ -500,7 +515,8 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | GET · POST | `/api/hooks` | ✓ | `?category=<id>` hoặc `?category=none` |
 | PATCH · DELETE | `/api/hooks/:id` | ✓ | |
 | POST | `/api/hooks/:id/index` | ✓ | Index đúng hook đó |
-| GET · POST | `/api/ideas/:id/variants` | ✓ | Biến thể của một ý tưởng gốc |
+| GET | `/api/variants` | ✓ | **Kho biến thể** — toàn bộ biến thể, kèm `idea_title`; `?idea=` `?q=` `?cursor=` |
+| GET · POST | `/api/ideas/:id/variants` | ✓ | Biến thể của MỘT ý tưởng gốc |
 | PATCH · DELETE | `/api/variants/:id` | ✓ | |
 | POST | `/api/variants/:id/index` | ✓ | Index đúng biến thể đó |
 | GET | `/api/prompt` | ✓ | `?variant_id=&hook_id=` — hook để trống vẫn ghép được |
@@ -519,6 +535,9 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 ## Giao diện
 
 **HTML tĩnh + ES module thuần, không có bước build** — xem phần Frontend ở trên.
+
+Thanh điều hướng có đúng ba kho — **Ý tưởng gốc**, **Biến thể**, **Hook** — rồi mới tới Tìm
+kiếm, Gợi ý và Tài khoản.
 
 **Chuyển sáng/tối.** Nút trên thanh điều hướng (và trên trang đăng nhập/đăng ký) chạy
 vòng: theo hệ thống → sáng → tối. Giữ lại lựa chọn "theo hệ thống" chứ không chỉ hai

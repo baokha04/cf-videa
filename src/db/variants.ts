@@ -1,5 +1,6 @@
 import type { Env } from '../types';
 import { newId, now } from '../util/id';
+import { type Cursor, encodeCursor } from './ideas';
 
 /**
  * Biến thể của một ý tưởng gốc: cùng chủ đề, khác góc triển khai.
@@ -91,6 +92,82 @@ export async function listForIdeas(
     map.set(r.idea_id, list);
   }
   return map;
+}
+
+/** Biến thể kèm tiêu đề ý tưởng gốc — kho biến thể luôn cần hiển thị nó đi cùng. */
+export interface VariantWithIdea extends VariantRow {
+  idea_title: string;
+}
+
+export interface VariantListFilters {
+  /** Chỉ lấy biến thể của một ý tưởng gốc. */
+  ideaId?: string;
+  /** Tìm từ khoá bằng LIKE trên tiêu đề, góc nhìn và dàn ý riêng. */
+  q?: string;
+}
+
+/**
+ * Toàn bộ biến thể của một người dùng — đây là "kho ý tưởng biến thể", khác với
+ * listForIdea() vốn chỉ lấy biến thể của đúng một ý tưởng gốc.
+ *
+ * JOIN sang ideas để lấy tiêu đề ý tưởng cha ngay trong một truy vấn: giao diện luôn
+ * cần nó để người dùng biết biến thể này thuộc về đâu, và lấy riêng sẽ thành N+1.
+ * Điều kiện JOIN ràng buộc CẢ user_id của ideas, không chỉ của idea_variants — thừa
+ * về lý thuyết vì hai cột luôn bằng nhau, nhưng nếu một ngày nào đó chúng lệch thì
+ * đây là chỗ chặn, chứ không phải chỗ rò rỉ.
+ *
+ * Phân trang keyset trên (updated_at DESC, id DESC), dùng lại đúng bộ mã hoá cursor
+ * của kho ý tưởng gốc.
+ */
+export async function listAll(
+  env: Env,
+  userId: string,
+  filters: VariantListFilters,
+  limit: number,
+  cursor: Cursor | null,
+): Promise<{ rows: VariantWithIdea[]; nextCursor: string | null }> {
+  const where: string[] = ['v.user_id = ?1'];
+  const binds: unknown[] = [userId];
+  // Đẩy giá trị vào mảng bind rồi trả placeholder NGAY tại chỗ — tách hai việc này ra
+  // là cách chắc chắn sinh ra hai placeholder trùng số. Xem chú thích ở db/ideas.ts.
+  const bind = (v: unknown): string => {
+    binds.push(v);
+    return `?${binds.length}`;
+  };
+
+  if (filters.ideaId) where.push(`v.idea_id = ${bind(filters.ideaId)}`);
+  if (filters.q) {
+    const like = `%${filters.q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+    where.push(
+      `(v.title LIKE ${bind(like)} ESCAPE '\\'` +
+        ` OR v.angle LIKE ${bind(like)} ESCAPE '\\'` +
+        ` OR v.script_outline LIKE ${bind(like)} ESCAPE '\\')`,
+    );
+  }
+  if (cursor) {
+    where.push(
+      `(v.updated_at < ${bind(cursor.updated_at)}` +
+        ` OR (v.updated_at = ${bind(cursor.updated_at)} AND v.id < ${bind(cursor.id)}))`,
+    );
+  }
+
+  // Lấy dư 1 hàng để biết còn trang sau hay không.
+  const sql = `SELECT v.*, i.title AS idea_title
+                 FROM idea_variants v
+                 JOIN ideas i ON i.id = v.idea_id AND i.user_id = v.user_id
+                WHERE ${where.join(' AND ')}
+                ORDER BY v.updated_at DESC, v.id DESC
+                LIMIT ${limit + 1}`;
+  const { results } = await env.DB.prepare(sql).bind(...binds).all<VariantWithIdea>();
+
+  const hasMore = results.length > limit;
+  const rows = hasMore ? results.slice(0, limit) : results;
+  const last = rows[rows.length - 1];
+  return {
+    rows,
+    nextCursor:
+      hasMore && last ? encodeCursor({ updated_at: last.updated_at, id: last.id }) : null,
+  };
 }
 
 export async function getById(

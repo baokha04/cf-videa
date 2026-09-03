@@ -251,6 +251,7 @@ button.link {
 }
 @media (hover: hover) {
   button:hover:not(:disabled) { border-color: var(--accent); }
+  a.chip:hover { border-color: var(--accent); color: var(--accent); }
 }
 
 /* Ô đánh dấu — hàng ngang, cả dòng chữ đều bấm được. */
@@ -312,6 +313,10 @@ button.link {
   white-space: nowrap;
 }
 .chip.score { color: var(--ok); }
+/* Chip bấm được — lọc kho biến thể theo ý tưởng gốc. Dùng <a> chứ không phải <button>:
+   vừa cho ra URL chia sẻ và tải lại được, vừa không dính luật nút cao tối thiểu 44px
+   (một cái nút cỡ chip sẽ vi phạm chính luật đó). */
+a.chip { text-decoration: none; }
 .chip.pending { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
 
 /* --- Thanh đồng bộ ------------------------------------------------------- */
