@@ -1,5 +1,5 @@
 import { get } from './api.js';
-import { $, renderList, show } from './ui.js';
+import { $, bindIndexButtons, renderList, show } from './ui.js';
 import { mountNav } from './nav.js';
 
 await mountNav('/search');
@@ -39,6 +39,10 @@ async function run(q) {
     go.textContent = 'Tìm';
   }
 }
+
+// Kết quả tìm từ khoá (khi Vectorize hỏng) đọc thẳng D1 nên có thể chứa ý tưởng chưa
+// index — nút Index trên thẻ vì thế vẫn có việc để làm.
+bindIndexButtons(listEl, { onMessage: (text, kind) => show(msg, text, kind) });
 
 $('#f').addEventListener('submit', (e) => {
   e.preventDefault();

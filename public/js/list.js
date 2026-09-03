@@ -1,5 +1,5 @@
 import { get, post } from './api.js';
-import { $, renderList, show } from './ui.js';
+import { $, bindIndexButtons, renderList, show } from './ui.js';
 import { mountNav } from './nav.js';
 
 await mountNav('/app');
@@ -108,31 +108,16 @@ $('#filters').addEventListener('submit', (e) => {
 moreBtn.addEventListener('click', () => load(true));
 
 /**
- * Nút Index trên từng thẻ ý tưởng.
+ * Nút Index trên từng thẻ ý tưởng — xử lý dùng chung ở ui.js, vì cùng cái nút đó cũng
+ * xuất hiện ở /search, /recommend và mục "Ý tưởng tương tự".
  *
  * Đường này KHÁC nút đồng bộ hàng loạt bên dưới: nó index đúng ý tưởng được bấm, và
  * chỉ nó mới trả về cảnh báo trùng.
  */
-listEl.addEventListener('click', async (e) => {
-  const indexId = e.target?.dataset?.index;
-  if (!indexId) return;
-  e.target.disabled = true;
-  e.target.textContent = '…';
-  try {
-    const r = await post(`/api/ideas/${encodeURIComponent(indexId)}/index`);
-    if (r.duplicates?.length) {
-      const names = r.duplicates.map((d) => d.title).join(', ');
-      show(msgEl, `Đã index. Có thể trùng với: ${names}. Mở ý tưởng để xem chi tiết.`, 'note');
-    } else {
-      show(msgEl, r.indexed
-        ? 'Đã index. Tìm kiếm ngữ nghĩa thấy được sau khoảng một phút nữa.'
-        : 'Index chưa xong, thử lại sau.', r.indexed ? 'ok' : 'note');
-    }
-  } catch (err) {
-    show(msgEl, err.message);
-  }
-  await refreshSyncState();
-  await load(false);
+bindIndexButtons(listEl, {
+  onMessage: (text, kind) => show(msgEl, text, kind),
+  // Số đếm trên thanh đồng bộ vừa đổi, nên phải hỏi lại server.
+  onIndexed: refreshSyncState,
 });
 
 reindexBtn.addEventListener('click', async () => {

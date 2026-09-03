@@ -25,6 +25,39 @@
     đi cùng hướng mà bạn chưa để mắt tới.
   </p>
 
+  <h2>Kết hợp thành ý tưởng mới</h2>
+  <p class="sub">
+    Thấy một ý tưởng cũ đáng làm lại? Ghép nó với một biến thể và một hook để có ý tưởng
+    gốc mới, lưu thẳng vào kho. Hook không bắt buộc.
+  </p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label for="cidea">Ý tưởng gốc</label>
+        <select id="cidea"></select>
+      </div>
+      <div>
+        <label for="cvariant">Biến thể</label>
+        <select id="cvariant"></select>
+      </div>
+      <div>
+        <label for="chook">Hook <span class="muted small">(không bắt buộc)</span></label>
+        <select id="chook"><option value="">— Không dùng hook —</option></select>
+      </div>
+    </div>
+    <!-- Bật lên khi số ý tưởng chạm trần của ô chọn: nói thẳng thay vì lặng lẽ thiếu. -->
+    <p id="cidea-note" class="muted small" hidden></p>
+
+    <div class="actions">
+      <button type="button" id="cgen">Xem trước prompt</button>
+      <button class="primary" type="button" id="csave">Tạo ý tưởng mới</button>
+    </div>
+    <p id="cmsg" class="msg"></p>
+    <pre id="cout" class="prompt-out" hidden></pre>
+  </div>
+
+  <h2>Ý tưởng cũ hợp gu</h2>
   <p id="msg" class="msg"></p>
   <div id="list" class="list"><p class="empty">Đang tải…</p></div>
 </main>

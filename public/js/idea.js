@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, esc, renderList, show } from './ui.js';
+import { $, bindIndexButtons, esc, renderList, show } from './ui.js';
 import { mountNav } from './nav.js';
 
 await mountNav('/app');
@@ -90,6 +90,10 @@ function showDuplicates(list) {
     + ' mất khoảng chừng đó mới truy vấn được vector vừa ghi.</p>';
   dupWarn.hidden = false;
 }
+
+// Ý tưởng tương tự lấy từ vector đã lưu, nhưng một ý tưởng đã sửa sau lần index gần
+// nhất vẫn hiện ra ở đây kèm chip "chưa index" — nên nút Index vẫn phải chạy.
+bindIndexButtons($('#similar'), { onMessage: (text, kind) => show(msg, text, kind) });
 
 async function loadSimilar() {
   try {
