@@ -573,8 +573,33 @@ lại (nó dùng `kind` thay cho `type`). Vô hại vì không còn gì ghi vào
 người đọc sau này — xoá bằng `wrangler vectorize delete-metadata-index videa-ideas-preview
 --property-name=kind` nếu muốn dọn.
 
-**Còn lại trước khi deploy:** chạy `npm run db:remote` và `npm run db:remote:preview` cho hai
-migration mới (`0006`, `0007`).
+**Migration `0006` và `0007`: đã chạy trên cả hai database** (2026-09-03), đã xác minh bằng
+`schema_migrations` và `pragma_table_info`. Trạng thái ngay sau đó:
+
+| Database | Nội dung | Bẩn sau `0007` |
+|---|---|---|
+| `videa-db` (production) | 1 user, 0 ý tưởng | 0 / 0 / 0 |
+| `videa-db-preview` | 6 user, 5 ý tưởng, 2 biến thể, 2 hook | 5 ý tưởng, 2 biến thể, 2 hook |
+
+Số bẩn ở preview là đúng như thiết kế: `0007` đặt `embedded_hash` của mọi ý tưởng về NULL,
+còn hai bảng mới sinh ra với `content_hash = ''`. Một lần bấm "Đồng bộ index" sau khi deploy
+sẽ rút cạn cả chín mục.
+
+⚠️ **`npm run db:remote` chạy LẠI toàn bộ `migrations/*.sql`, không chỉ file mới.** Trên một
+database đã tồn tại, `0001`–`0005` sẽ lỗi ("table already exists", "duplicate column") rồi
+vòng lặp vẫn đi tiếp — không mất dữ liệu, nhưng một bức tường lỗi khiến rất khó thấy hai file
+mới có áp được hay không. Với database đã có sẵn thì áp thẳng từng file:
+
+```bash
+npx wrangler d1 execute videa-db --remote --file=./migrations/0006_negative_prompt_and_lineage.sql
+npx wrangler d1 execute videa-db --remote --file=./migrations/0007_index_hooks_variants.sql
+```
+
+Kiểm tra trước bằng `SELECT version FROM schema_migrations ORDER BY applied_at;` để biết
+database đang thiếu đúng những file nào. (Lưu ý khi tự viết truy vấn kiểm tra: LIKE của SQLite
+chỉ hiểu `%` và `_`, không có lớp ký tự `[]` — `LIKE '000[67]%'` khớp rỗng chứ không báo lỗi.)
+
+**Còn lại:** deploy (`npm run deploy`), rồi bấm "Đồng bộ index" một lần.
 
 ## Kiểm thử
 
