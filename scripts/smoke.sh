@@ -162,6 +162,17 @@ VAR_ID=$(jqr "$(body "$R")" variant.id)
 R=$(req GET "/api/ideas/$IDEA_ID/variants" "" "$TOKEN_A")
 expect "GET biến thể trả 200" 200 "$(code "$R")"
 
+# Kho biến thể: toàn bộ biến thể của người dùng, không bó theo một ý tưởng.
+R=$(req GET /api/variants "" "$TOKEN_A")
+expect "GET /api/variants (kho biến thể) trả 200" 200 "$(code "$R")"
+expect "kho biến thể có đúng 1 mục" 1 "$(printf '%s' "$(body "$R")" | tr ',' '\n' | grep -c '"idea_title"')"
+case "$(body "$R")" in
+  *'"idea_title"'*) c_ok "mỗi biến thể kèm tiêu đề ý tưởng gốc" ;;
+  *) c_bad "biến thể KHÔNG kèm tiêu đề ý tưởng gốc" ;;
+esac
+R=$(req GET "/api/variants?idea=$IDEA_ID" "" "$TOKEN_A")
+expect "lọc kho biến thể theo ý tưởng gốc trả 200" 200 "$(code "$R")"
+
 # Biến thể nằm trong văn bản đem đi nhúng, nên ý tưởng phải bẩn trở lại.
 # /api/sync nay đếm cả ba kho, nên nhắm thẳng vào riêng phần ý tưởng.
 R=$(req GET /api/sync "" "$TOKEN_A")
@@ -285,6 +296,11 @@ expect "sinh prompt từ biến thể người khác trả 404" 404 "$(code "$R"
 R=$(req GET "/api/ideas?limit=50" "" "$TOKEN_B")
 COUNT_B=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
 expect "danh sách của tài khoản B rỗng" 0 "$COUNT_B"
+
+R=$(req GET /api/variants "" "$TOKEN_B")
+expect "kho biến thể của tài khoản B rỗng" "[]" "$(printf '%s' "$(body "$R")" | python3 -c 'import json,sys;print(json.load(sys.stdin)["variants"])')"
+R=$(req GET "/api/variants?idea=$IDEA_ID" "" "$TOKEN_B")
+expect "lọc theo ý tưởng của người khác cho ra rỗng" "[]" "$(printf '%s' "$(body "$R")" | python3 -c 'import json,sys;print(json.load(sys.stdin)["variants"])')"
 
 R=$(req POST "/api/ideas/$IDEA_ID/index" "" "$TOKEN_B")
 expect "index ý tưởng của người khác trả 404" 404 "$(code "$R")"

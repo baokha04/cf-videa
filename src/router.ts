@@ -89,6 +89,9 @@ app.post('/ideas/:id/index', ideas.indexIdea);
 // khác hẳn GET /prompt bên dưới, vốn chỉ ghép ra chuỗi rồi thôi.
 app.post('/ideas/combine', ideas.combineIdea);
 
+// Kho ý tưởng biến thể: toàn bộ biến thể của người dùng, không bó theo ý tưởng nào.
+app.get('/variants', variants.listAllVariants);
+
 // Biến thể của một ý tưởng gốc.
 app.get('/ideas/:id/variants', variants.listVariants);
 app.post('/ideas/:id/variants', variants.createVariant);

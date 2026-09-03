@@ -203,3 +203,103 @@ describe('kết hợp: cách ly giữa các tài khoản', () => {
     expect(rows).toHaveLength(1);
   });
 });
+
+describe('kho ý tưởng biến thể (listAll)', () => {
+  let A: string;
+  let B: string;
+
+  beforeEach(async () => {
+    await migrate();
+    await testEnv().DB.prepare('DELETE FROM users').run();
+    A = (await mkUser('a@example.com')).id;
+    B = (await mkUser('b@example.com')).id;
+  });
+
+  async function mkVariant(uid: string, ideaId: string, title: string, angle = '', script = '') {
+    return variantsDb.create(
+      testEnv(), uid, ideaId,
+      { title, angle, script_outline: script, sort_order: 0 },
+      'hv',
+    );
+  }
+
+  it('gom biến thể của MỌI ý tưởng, kèm tiêu đề ý tưởng cha', async () => {
+    // Đây là điểm khác biệt với listForIdea(): kho biến thể không bó theo một ý tưởng.
+    const i1 = await ideasDb.create(testEnv(), A, { ...BASE, title: 'Ý tưởng một' }, 'h1');
+    const i2 = await ideasDb.create(testEnv(), A, { ...BASE, title: 'Ý tưởng hai' }, 'h2');
+    await mkVariant(A, i1.id, 'BT của một');
+    await mkVariant(A, i2.id, 'BT của hai');
+
+    const { rows } = await variantsDb.listAll(testEnv(), A, {}, 20, null);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.title).sort()).toEqual(['BT của hai', 'BT của một']);
+    // Tiêu đề ý tưởng cha phải đi cùng, nếu không giao diện sẽ phải hỏi thêm N truy vấn.
+    const byTitle = new Map(rows.map((r) => [r.title, r.idea_title]));
+    expect(byTitle.get('BT của một')).toBe('Ý tưởng một');
+    expect(byTitle.get('BT của hai')).toBe('Ý tưởng hai');
+  });
+
+  it('lọc được theo ý tưởng gốc', async () => {
+    const i1 = await ideasDb.create(testEnv(), A, { ...BASE, title: 'Ý tưởng một' }, 'h1');
+    const i2 = await ideasDb.create(testEnv(), A, { ...BASE, title: 'Ý tưởng hai' }, 'h2');
+    await mkVariant(A, i1.id, 'BT của một');
+    await mkVariant(A, i2.id, 'BT của hai');
+
+    const { rows } = await variantsDb.listAll(testEnv(), A, { ideaId: i1.id }, 20, null);
+    expect(rows.map((r) => r.title)).toEqual(['BT của một']);
+  });
+
+  it('tìm từ khoá quét cả tên, góc nhìn và dàn ý riêng', async () => {
+    const i = await ideasDb.create(testEnv(), A, BASE, 'h1');
+    await mkVariant(A, i.id, 'Bản A', 'góc nhìn người xem');
+    await mkVariant(A, i.id, 'Bản B', '', 'mở đầu bằng người xem đặt câu hỏi');
+    await mkVariant(A, i.id, 'người xem C');
+    await mkVariant(A, i.id, 'Không liên quan', 'khác hẳn');
+
+    const { rows } = await variantsDb.listAll(testEnv(), A, { q: 'người xem' }, 20, null);
+    expect(rows.map((r) => r.title).sort()).toEqual(['Bản A', 'Bản B', 'người xem C']);
+  });
+
+  it('ký tự đại diện trong từ khoá được thoát', async () => {
+    const i = await ideasDb.create(testEnv(), A, BASE, 'h1');
+    await mkVariant(A, i.id, 'giảm 50% thời lượng');
+    await mkVariant(A, i.id, 'chuyện khác hẳn');
+    const { rows } = await variantsDb.listAll(testEnv(), A, { q: '50%' }, 20, null);
+    expect(rows.map((r) => r.title)).toEqual(['giảm 50% thời lượng']);
+  });
+
+  it('phân trang keyset lấy đủ, không trùng và không sót', async () => {
+    const i = await ideasDb.create(testEnv(), A, BASE, 'h1');
+    for (let n = 0; n < 7; n++) await mkVariant(A, i.id, `BT ${n}`);
+
+    const seen: string[] = [];
+    let cursor = null as ReturnType<typeof ideasDb.decodeCursor>;
+    for (let page = 0; page < 10; page++) {
+      const r = await variantsDb.listAll(testEnv(), A, {}, 3, cursor);
+      seen.push(...r.rows.map((x) => x.id));
+      if (!r.nextCursor) break;
+      cursor = ideasDb.decodeCursor(r.nextCursor);
+    }
+    expect(seen).toHaveLength(7);
+    expect(new Set(seen).size).toBe(7);
+  });
+
+  it('KHÔNG bao giờ trả về biến thể của tài khoản khác', async () => {
+    const ideaA = await ideasDb.create(testEnv(), A, BASE, 'ha');
+    await mkVariant(A, ideaA.id, 'BT của A');
+    const ideaB = await ideasDb.create(testEnv(), B, BASE, 'hb');
+    await mkVariant(B, ideaB.id, 'BT của B');
+
+    const forA = await variantsDb.listAll(testEnv(), A, {}, 20, null);
+    expect(forA.rows.map((r) => r.title)).toEqual(['BT của A']);
+    const forB = await variantsDb.listAll(testEnv(), B, {}, 20, null);
+    expect(forB.rows.map((r) => r.title)).toEqual(['BT của B']);
+  });
+
+  it('lọc theo ý tưởng của người khác cho ra rỗng, không phải dữ liệu của họ', async () => {
+    const ideaB = await ideasDb.create(testEnv(), B, BASE, 'hb');
+    await mkVariant(B, ideaB.id, 'BT của B');
+    const { rows } = await variantsDb.listAll(testEnv(), A, { ideaId: ideaB.id }, 20, null);
+    expect(rows).toEqual([]);
+  });
+});
