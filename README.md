@@ -553,7 +553,7 @@ nếu thế thì ép sáng trên máy đang để chế độ tối sẽ ra bi�
 | Thứ | Ở đâu |
 |---|---|
 | Production | https://cf-videa.pages.dev — `env: production`, D1 `videa-db`, index `videa-ideas` |
-| Preview (nhánh này) | https://claude-account-management-sh.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
+| Preview (nhánh này) | https://claude-friendly-goodall-xtch.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
 **Metadata index `type`: đã tạo xong trên cả hai index** (2026-09-03), đã poll xác nhận đủ
 5 property. Đây là điều kiện tiên quyết vì `queryIdeas` lọc `type = 'idea'`: vector nào
 không mang `type` sẽ bị loại khỏi kết quả — im lặng, không lỗi.
@@ -599,7 +599,20 @@ Kiểm tra trước bằng `SELECT version FROM schema_migrations ORDER BY appli
 database đang thiếu đúng những file nào. (Lưu ý khi tự viết truy vấn kiểm tra: LIKE của SQLite
 chỉ hiểu `%` và `_`, không có lớp ký tự `[]` — `LIKE '000[67]%'` khớp rỗng chứ không báo lỗi.)
 
-**Còn lại:** deploy (`npm run deploy`), rồi bấm "Đồng bộ index" một lần.
+**Đã deploy lên preview và kiểm chứng với Vectorize + Workers AI thật** (2026-09-03):
+`npm run smoke` chạy với `BASE=` bản deploy cho **84 đạt / 0 hỏng**, và lần này nhánh
+"Vectorize dùng được" được chọn — tức là index từng mục cho ý tưởng, biến thể và hook đều
+thật sự lên tới Vectorize, và `/api/sync` về 0 sau đó.
+
+Phép kiểm quan trọng nhất là tìm kiếm ngữ nghĩa trả về **có kết quả**: nếu vector không mang
+metadata `type` thì filter `type = 'idea'` sẽ khớp rỗng, và `/api/search` vẫn báo
+`mode: "vector"` nhưng không có mục nào — hỏng hoàn toàn im lặng, không lỗi, không log. Đo
+thật: vector truy vấn được sau **~15 giây**, nhanh hơn con số ~68 giây ghi ở mục 2 (một lần
+đo, không phải mức bảo đảm — cứ tiếp tục nói với người dùng là "khoảng một phút").
+
+`wrangler pages deploy` không kèm `--branch` sẽ theo nhánh git hiện tại, nên từ một nhánh
+không phải `main` nó ra **preview**, dùng `env.preview` (`videa-db-preview` +
+`videa-ideas-preview`). Muốn lên production thì merge vào `main` rồi deploy từ đó.
 
 ## Kiểm thử
 
