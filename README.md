@@ -173,13 +173,17 @@ Hai cái bẫy nữa của CLI, cả hai đều hỏng âm thầm:
 ### Migration và secret
 
 ```bash
-npx wrangler d1 execute videa-db         --remote --file=./migrations/0001_init.sql
-npx wrangler d1 execute videa-db-preview --remote --file=./migrations/0001_init.sql
+npm run db:remote                 # chạy lần lượt migrations/*.sql lên videa-db
+npm run db:remote:preview         # tương tự, lên videa-db-preview
 
 npx wrangler pages project create cf-videa --production-branch=main
 npx wrangler pages secret put ADMIN_TOKEN               # production
 npx wrangler pages secret put ADMIN_TOKEN --env preview
 ```
+
+`scripts/repair/` không nằm trong chuỗi trên và `npm run db:remote` không chạm tới. Đó là
+script vá một lần cho database đã tồn tại; database dựng mới từ `migrations/` không cần và
+sẽ lỗi nếu chạy. Mỗi file tự nói rõ nó vá gì trong phần đầu.
 
 ---
 
@@ -293,7 +297,8 @@ functions/       Entrypoint Pages Functions, đúng 3 dòng
 src/             Toàn bộ logic. Không import gì từ Pages.
   router.ts      Một router Hono duy nhất — đây là chỗ nối cho tính di động
   worker.ts      Entrypoint Worker, chưa dùng, giữ sẵn để chuyển nền sau này
-migrations/      Schema D1
+migrations/      Schema D1 — chạy tuần tự, dựng được database mới từ số 0
+scripts/repair/  Script vá một lần cho database đã có, KHÔNG nằm trong chuỗi migration
 ```
 
 **Vì sao tách `src/` khỏi `functions/`:** chuyển từ Pages sang Worker + static assets sau
