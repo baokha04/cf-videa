@@ -554,17 +554,27 @@ nếu thế thì ép sáng trên máy đang để chế độ tối sẽ ra bi�
 |---|---|
 | Production | https://cf-videa.pages.dev — `env: production`, D1 `videa-db`, index `videa-ideas` |
 | Preview (nhánh này) | https://claude-account-management-sh.cf-videa.pages.dev — D1 `videa-db-preview`, index `videa-ideas-preview` |
-Cả hai D1 và cả hai Vectorize index đã được dọn sạch dữ liệu kiểm thử.
+**Metadata index `type`: đã tạo xong trên cả hai index** (2026-09-03), đã poll xác nhận đủ
+5 property. Đây là điều kiện tiên quyết vì `queryIdeas` lọc `type = 'idea'`: vector nào
+không mang `type` sẽ bị loại khỏi kết quả — im lặng, không lỗi.
 
-⚠️ **Trước lần deploy kế tiếp phải thêm metadata index `type`** cho cả hai Vectorize index
-(xem "Khởi tạo hạ tầng"), rồi poll cho đủ **5** property. Từ nay `queryIdeas` lọc
-`type = 'idea'`, nên vector nào không mang `type` sẽ bị loại khỏi kết quả — im lặng, không
-lỗi. Index đang rỗng nên không có gì để mất; nếu đã có dữ liệu thì chạy
-`POST /api/admin/reindex {"scope":"all"}` một lượt sau khi metadata index sẵn sàng.
+| Index | vectorCount lúc thêm `type` | Hệ quả |
+|---|---:|---|
+| `videa-ideas` (production) | 0 | Không có gì để mất |
+| `videa-ideas-preview` | 5 | 5 vector cũ không mang `type` → vô hình cho tới khi index lại |
 
-Hai migration mới (`0006`, `0007`) chạy bằng `npm run db:remote` như thường lệ. `0007` cố ý
-đặt lại `embedded_hash` của mọi ý tưởng về NULL — đó chính là cách đánh dấu "cần index lại
-để mang `type`".
+Năm vector cũ ở preview **tự lành**: migration `0007` đặt `embedded_hash` của mọi ý tưởng
+về NULL, nên lần đồng bộ kế tiếp sẽ upsert đè lên đúng những id đó, lần này có `type`. Id
+vector của ý tưởng là id trần không tiền tố nên chúng khớp nhau — đó là một lý do nữa để
+ý tưởng KHÔNG đổi sang id có tiền tố.
+
+`videa-ideas-preview` còn một metadata index thừa tên `kind`, do nhánh thiết kế bị loại để
+lại (nó dùng `kind` thay cho `type`). Vô hại vì không còn gì ghi vào đó, nhưng là rác cho
+người đọc sau này — xoá bằng `wrangler vectorize delete-metadata-index videa-ideas-preview
+--property-name=kind` nếu muốn dọn.
+
+**Còn lại trước khi deploy:** chạy `npm run db:remote` và `npm run db:remote:preview` cho hai
+migration mới (`0006`, `0007`).
 
 ## Kiểm thử
 
