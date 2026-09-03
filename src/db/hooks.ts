@@ -22,8 +22,40 @@ export interface HookRow {
   category_id: string | null;
   text: string;
   note: string;
+  content_hash: string;
+  embedded_hash: string | null;
+  indexed_meta_hash: string | null;
+  embedding_model: string | null;
+  embedded_at: number | null;
+  embed_attempts: number;
   created_at: number;
   updated_at: number;
+}
+
+/**
+ * Điều kiện "hook cần đồng bộ lại". Phải khớp CHÍNH XÁC mệnh đề WHERE của
+ * idx_hooks_dirty trong migrations/0007 — lệch một ký tự là SQLite bỏ qua index và
+ * quét toàn bảng, im lặng.
+ *
+ * Danh mục nằm trong metadata của vector nhưng KHÔNG nằm trong văn bản nhúng, nên
+ * chuyển hook sang danh mục khác không làm content_hash đổi. indexed_meta_hash bắt
+ * đúng trường hợp đó — cùng cái bẫy mà migrations/0004 đã vá cho `status`.
+ */
+export const HOOK_DIRTY_SQL = `(
+  embedded_hash IS NULL
+  OR embedded_hash <> content_hash
+  OR indexed_meta_hash IS NULL
+  OR indexed_meta_hash <> 'hook' || '|' || COALESCE(category_id, '')
+)`;
+
+/** Bản TS của biểu thức SQL ngay trên. Hai chỗ này phải cho cùng một chuỗi. */
+export function hookMetaSignature(hook: Pick<HookRow, 'category_id'>): string {
+  return `hook|${hook.category_id ?? ''}`;
+}
+
+/** Hook này cần nhúng lại (không chỉ cập nhật metadata)? */
+export function hookNeedsEmbedding(row: HookRow): boolean {
+  return row.embedded_hash === null || row.embedded_hash !== row.content_hash;
 }
 
 // --- Danh mục ---------------------------------------------------------------
@@ -146,6 +178,7 @@ export async function createHook(
   env: Env,
   userId: string,
   input: { text: string; note: string; category_id: string | null },
+  contentHash: string,
 ): Promise<HookRow | null> {
   if (!(await assertCategoryOwned(env, userId, input.category_id))) return null;
   const t = now();
@@ -155,14 +188,23 @@ export async function createHook(
     category_id: input.category_id,
     text: input.text,
     note: input.note,
+    content_hash: contentHash,
+    embedded_hash: null,
+    indexed_meta_hash: null,
+    embedding_model: null,
+    embedded_at: null,
+    embed_attempts: 0,
     created_at: t,
     updated_at: t,
   };
+  // Như ý tưởng: chỉ ghi D1, không nhúng, không đụng Vectorize. Hàng sinh ra đã "bẩn"
+  // sẵn nên nút Index của chính nó sẽ sáng lên.
   await env.DB.prepare(
-    `INSERT INTO hooks (id, user_id, category_id, text, note, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)`,
+    `INSERT INTO hooks (id, user_id, category_id, text, note, content_hash,
+                        embed_attempts, created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?7)`,
   )
-    .bind(row.id, userId, row.category_id, row.text, row.note, t)
+    .bind(row.id, userId, row.category_id, row.text, row.note, contentHash, t)
     .run();
   return row;
 }
@@ -172,15 +214,78 @@ export async function updateHook(
   userId: string,
   id: string,
   input: { text: string; note: string; category_id: string | null },
+  contentHash: string,
 ): Promise<boolean> {
   if (!(await assertCategoryOwned(env, userId, input.category_id))) return false;
   const res = await env.DB.prepare(
-    `UPDATE hooks SET text = ?3, note = ?4, category_id = ?5, updated_at = ?6
+    `UPDATE hooks SET text = ?3, note = ?4, category_id = ?5, content_hash = ?6, updated_at = ?7
       WHERE id = ?1 AND user_id = ?2`,
   )
-    .bind(id, userId, input.text, input.note, input.category_id, now())
+    .bind(id, userId, input.text, input.note, input.category_id, contentHash, now())
     .run();
   return (res.meta.changes ?? 0) > 0;
+}
+
+// --- Kế toán đồng bộ Vectorize ----------------------------------------------
+// Đối xứng hoàn toàn với src/db/ideas.ts; xem chú thích ở đó cho lý do từng ràng buộc.
+
+export async function markEmbedded(
+  env: Env,
+  id: string,
+  contentHash: string,
+  model: string,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE hooks
+        SET embedded_hash = ?2, embedding_model = ?3, embedded_at = ?4, embed_attempts = 0,
+            indexed_meta_hash = 'hook' || '|' || COALESCE(category_id, '')
+      WHERE id = ?1 AND content_hash = ?2`,
+  )
+    .bind(id, contentHash, model, now())
+    .run();
+}
+
+export async function markMetaSynced(env: Env, id: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE hooks
+        SET indexed_meta_hash = 'hook' || '|' || COALESCE(category_id, ''), embed_attempts = 0
+      WHERE id = ?1`,
+  )
+    .bind(id)
+    .run();
+}
+
+export async function markEmbedFailed(env: Env, id: string): Promise<void> {
+  await env.DB.prepare(`UPDATE hooks SET embed_attempts = embed_attempts + 1 WHERE id = ?1`)
+    .bind(id)
+    .run();
+}
+
+export async function listDirty(env: Env, limit: number, userId?: string): Promise<HookRow[]> {
+  const sql = userId
+    ? `SELECT * FROM hooks WHERE ${HOOK_DIRTY_SQL} AND user_id = ?2 ORDER BY updated_at LIMIT ?1`
+    : `SELECT * FROM hooks WHERE ${HOOK_DIRTY_SQL} ORDER BY updated_at LIMIT ?1`;
+  const stmt = userId ? env.DB.prepare(sql).bind(limit, userId) : env.DB.prepare(sql).bind(limit);
+  const { results } = await stmt.all<HookRow>();
+  return results;
+}
+
+export async function countDirty(env: Env, userId?: string): Promise<number> {
+  const sql = userId
+    ? `SELECT COUNT(*) AS n FROM hooks WHERE ${HOOK_DIRTY_SQL} AND user_id = ?1`
+    : `SELECT COUNT(*) AS n FROM hooks WHERE ${HOOK_DIRTY_SQL}`;
+  const stmt = userId ? env.DB.prepare(sql).bind(userId) : env.DB.prepare(sql);
+  const row = await stmt.first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+export async function markAllDirty(env: Env, userId?: string): Promise<number> {
+  const sql = userId
+    ? `UPDATE hooks SET embedded_hash = NULL, indexed_meta_hash = NULL WHERE user_id = ?1`
+    : `UPDATE hooks SET embedded_hash = NULL, indexed_meta_hash = NULL`;
+  const stmt = userId ? env.DB.prepare(sql).bind(userId) : env.DB.prepare(sql);
+  const res = await stmt.run();
+  return res.meta.changes ?? 0;
 }
 
 export async function deleteHook(env: Env, userId: string, id: string): Promise<boolean> {

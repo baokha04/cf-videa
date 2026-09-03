@@ -4,6 +4,7 @@ import {
   DEFAULT_TEMPLATE,
   TEMPLATE_VARS,
   buildPrompt,
+  buildValues as buildValuesOf,
   getTemplate,
   render,
   resetTemplate,
@@ -19,6 +20,8 @@ import type { IdeaRow } from '../src/types';
 const idea = {
   id: 'i1', user_id: 'u1', title: 'Bữa sáng yến mạch', script_outline: 'Dàn ý GỐC',
   platform: 'tiktok', niche: 'ẩm thực', status: 'idea', visibility: 'private', lang: 'vi',
+  negative_prompt: 'không nhạc bản quyền',
+  source_idea_id: null, source_variant_id: null, source_hook_id: null,
   content_hash: 'h', embedded_hash: null, indexed_meta_hash: null, embedding_model: null,
   embedded_at: null, embed_attempts: 0, created_at: 0, updated_at: 0,
 } as IdeaRow;
@@ -115,5 +118,28 @@ describe('lưu mẫu prompt', () => {
     const b = await usersDb.insert(testEnv(), 'b@example.com', await hashPassword('x', 1000), null);
     await saveTemplate(testEnv(), uid, 'CỦA A');
     expect(await getTemplate(testEnv(), b!.id)).toBe(DEFAULT_TEMPLATE);
+  });
+});
+
+describe('negative prompt trong mẫu', () => {
+  it('{{negative_prompt}} lấy từ ý tưởng gốc', () => {
+    expect(render('Tránh: {{negative_prompt}}', buildValuesOf(parts)))
+      .toBe('Tránh: không nhạc bản quyền');
+  });
+
+  it('mẫu mặc định có mục negative prompt và điền được', () => {
+    const out = buildPrompt(DEFAULT_TEMPLATE, parts);
+    expect(out).toContain('## Negative prompt — avoid');
+    expect(out).toContain('không nhạc bản quyền');
+    expect(out).not.toContain('{{');
+  });
+
+  it('để trống thì mục đó rỗng chứ không rơi ra chữ "undefined"', () => {
+    const out = buildPrompt(DEFAULT_TEMPLATE, {
+      ...parts,
+      idea: { ...idea, negative_prompt: '' },
+    });
+    expect(out).not.toContain('undefined');
+    expect(out).not.toContain('{{');
   });
 });

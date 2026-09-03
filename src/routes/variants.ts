@@ -5,9 +5,30 @@ import * as variantsDb from '../db/variants';
 import * as ideasDb from '../db/ideas';
 import * as hooksDb from '../db/hooks';
 import { tagsForIdeas } from '../db/tags';
-import { touchIdeaContent } from '../content';
+import { computeVariantHash, touchIdeaContent } from '../content';
+import { deleteVectors, queueGc, vectorId } from '../vec/index';
+import { indexOne } from '../vec/sync';
 import { buildPrompt, getTemplate } from '../prompt';
 import { normText, requiredText } from '../util/validate';
+
+/**
+ * Biến thể trả về cho client: bỏ các cột kế toán đồng bộ, thay bằng đúng một cờ
+ * `indexed`. Tính ở server chứ không để giao diện tự dựng lại phép so hash — hai bản
+ * sao của cùng một quy tắc là hai thứ sẽ lệch nhau.
+ */
+function toDto(row: variantsDb.VariantRow) {
+  const {
+    content_hash, embedded_hash, indexed_meta_hash, embedding_model, embedded_at,
+    embed_attempts, ...rest
+  } = row;
+  void content_hash; void embedding_model; void embedded_at; void embed_attempts;
+  return {
+    ...rest,
+    indexed:
+      embedded_hash === row.content_hash &&
+      indexed_meta_hash === variantsDb.variantMetaSignature(row),
+  };
+}
 
 function parseInput(body: Record<string, unknown>, base?: variantsDb.VariantRow) {
   const has = (k: string) => Object.prototype.hasOwnProperty.call(body, k);
@@ -27,20 +48,24 @@ export async function listVariants(c: Ctx): Promise<Response> {
   const ideaId = pathParam(c, 'id');
   const idea = await ideasDb.getById(c.env, user.id, ideaId);
   if (!idea) throw notFound('Không tìm thấy ý tưởng.');
-  return c.json({ variants: await variantsDb.listForIdea(c.env, user.id, ideaId) });
+  const rows = await variantsDb.listForIdea(c.env, user.id, ideaId);
+  return c.json({ variants: rows.map(toDto) });
 }
 
 export async function createVariant(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const ideaId = pathParam(c, 'id');
   const body = await readJson(c);
-  const row = await variantsDb.create(c.env, user.id, ideaId, parseInput(body));
+  const input = parseInput(body);
+  const row = await variantsDb.create(
+    c.env, user.id, ideaId, input, await computeVariantHash(input),
+  );
   if (!row) throw notFound('Không tìm thấy ý tưởng.');
   // Tiêu đề và góc nhìn của biến thể nằm trong văn bản đem đi nhúng, nên ý tưởng gốc
   // phải trở lại trạng thái "chưa đồng bộ" — nếu không, tìm kiếm ngữ nghĩa sẽ không
   // bao giờ thấy biến thể mới.
   await touchIdeaContent(c.env, user.id, ideaId);
-  return c.json({ variant: row }, 201);
+  return c.json({ variant: toDto(row) }, 201);
 }
 
 export async function updateVariant(c: Ctx): Promise<Response> {
@@ -49,11 +74,14 @@ export async function updateVariant(c: Ctx): Promise<Response> {
   const existing = await variantsDb.getById(c.env, user.id, id);
   if (!existing) throw notFound('Không tìm thấy biến thể.');
   const body = await readJson(c);
-  const ok = await variantsDb.update(c.env, user.id, id, parseInput(body, existing));
+  const input = parseInput(body, existing);
+  const ok = await variantsDb.update(
+    c.env, user.id, id, input, await computeVariantHash(input),
+  );
   if (!ok) throw notFound('Không tìm thấy biến thể.');
   await touchIdeaContent(c.env, user.id, existing.idea_id);
   const fresh = await variantsDb.getById(c.env, user.id, id);
-  return c.json({ variant: fresh });
+  return c.json({ variant: fresh ? toDto(fresh) : null });
 }
 
 export async function deleteVariant(c: Ctx): Promise<Response> {
@@ -63,7 +91,25 @@ export async function deleteVariant(c: Ctx): Promise<Response> {
   if (!existing) throw notFound('Không tìm thấy biến thể.');
   await variantsDb.remove(c.env, user.id, id);
   await touchIdeaContent(c.env, user.id, existing.idea_id);
+
+  const vid = vectorId('variant', id);
+  c.executionCtx.waitUntil(
+    deleteVectors(c.env, [vid]).catch(async (err) => {
+      console.error('deleteVectors failed', vid, err);
+      await queueGc(c.env, [vid], user.id).catch(() => {});
+    }),
+  );
   return c.body(null, 204);
+}
+
+/** Nút "Index" của riêng một biến thể. Xem chú thích ở ideas.indexIdea. */
+export async function indexVariant(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  const id = pathParam(c, 'id');
+  const result = await indexOne(c.env, user.id, 'variant', id);
+  if (!result) throw notFound('Không tìm thấy biến thể.');
+  const fresh = await variantsDb.getById(c.env, user.id, id);
+  return c.json({ variant: fresh ? toDto(fresh) : null, indexed: result.indexed });
 }
 
 /**

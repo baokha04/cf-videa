@@ -4,7 +4,7 @@ import { badRequest, notFound } from '../http/response';
 import { enforce, LIMITS } from '../auth/ratelimit';
 import * as ideasDb from '../db/ideas';
 import { embedOne } from '../vec/embeddings';
-import { getVectors, queryIdeas } from '../vec/index';
+import { getVectors, queryIdeas, vectorId } from '../vec/index';
 import { hydrate } from './ideas';
 import { clampLimit, normText, oneOf } from '../util/validate';
 import { IDEA_STATUSES, PLATFORMS, type IdeaStatus, type Platform } from '../types';
@@ -72,7 +72,7 @@ export async function similar(c: Ctx): Promise<Response> {
   const limit = clampLimit(c.req.query('limit') ?? null, 10, 50);
   let vector: number[] | undefined;
   try {
-    vector = (await getVectors(c.env, [id])).get(id);
+    vector = (await getVectors(c.env, [vectorId('idea', id)])).get(id);
   } catch (err) {
     console.error('similar: không lấy được vector', err);
     vector = undefined;
@@ -89,7 +89,10 @@ export async function similar(c: Ctx): Promise<Response> {
   try {
     matches = await queryIdeas(c.env, vector, {
       userId: user.id,
-      topK: Math.min(limit + 1, 100),
+      topK: limit,
+      // Bỏ chính nó ngay trong tầng truy vấn, và xin dư một suất để không bị hụt
+      // mất một kết quả — xem runQuery trong src/vec/index.ts.
+      excludeId: id,
     });
   } catch (err) {
     console.error('similar: truy vấn Vectorize thất bại', err);
@@ -99,7 +102,7 @@ export async function similar(c: Ctx): Promise<Response> {
       message: 'Tính năng tìm ý tưởng tương tự tạm thời không dùng được.',
     });
   }
-  const ids = matches.map((m) => m.id).filter((x) => x !== id);
+  const ids = matches.map((m) => m.id);
   const rowMap = await ideasDb.getManyByIds(c.env, user.id, ids);
   const scores = new Map(matches.map((m) => [m.id, m.score]));
   const rows = ids

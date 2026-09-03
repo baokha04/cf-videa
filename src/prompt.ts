@@ -39,6 +39,9 @@ export const DEFAULT_TEMPLATE = `# SHORT VIDEO PROMPT
 - Open on the hook line above, no intro card
 - Keep on-screen text in Vietnamese
 
+## Negative prompt — avoid
+{{negative_prompt}}
+
 ## Tags
 {{tags}}`;
 
@@ -54,6 +57,7 @@ export const TEMPLATE_VARS = [
   'platform',
   'status',
   'tags',
+  'negative_prompt',
 ] as const;
 
 export type TemplateVar = (typeof TEMPLATE_VARS)[number];
@@ -80,6 +84,9 @@ export function buildValues(p: PromptParts): Record<TemplateVar, string> {
     platform: p.idea.platform,
     status: p.idea.status,
     tags: p.tags.join(', '),
+    // Lấy từ ý tưởng gốc. Biến thể không có ô riêng: thứ "không được xuất hiện" là
+    // thuộc tính của chủ đề, không phải của một góc triển khai cụ thể.
+    negative_prompt: p.idea.negative_prompt,
   };
 }
 

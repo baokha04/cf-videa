@@ -46,6 +46,8 @@ function hookCard(h) {
     <div class="meta">
       <span class="chip">${esc(cat ? cat.name : 'Chưa phân loại')}</span>
       ${h.note ? `<span class="chip">${esc(h.note)}</span>` : ''}
+      ${h.indexed ? '' : '<span class="chip pending" title="Chưa nằm trong tìm kiếm ngữ nghĩa">chưa index</span>'}
+      <button class="link" type="button" data-index="${esc(h.id)}">Index</button>
       <button class="link" type="button" data-edit="${esc(h.id)}">Sửa</button>
       <button class="link" type="button" data-del="${esc(h.id)}">Xoá</button>
     </div>
@@ -121,6 +123,21 @@ $('#hcancel').addEventListener('click', resetForm);
 listEl.addEventListener('click', async (e) => {
   const editId = e.target?.dataset?.edit;
   const delId = e.target?.dataset?.del;
+  const indexId = e.target?.dataset?.index;
+  if (indexId) {
+    e.target.disabled = true;
+    e.target.textContent = '…';
+    try {
+      const r = await post(`/api/hooks/${encodeURIComponent(indexId)}/index`);
+      show($('#hookmsg'), r.indexed
+        ? 'Đã index hook. Tìm được sau khoảng một phút nữa.'
+        : 'Index chưa xong, thử lại sau.', r.indexed ? 'ok' : 'note');
+    } catch (err) {
+      show($('#hookmsg'), err.message);
+    }
+    await loadHooks();
+    return;
+  }
   if (editId) {
     const { hooks } = await get('/api/hooks');
     const h = hooks.find((x) => x.id === editId);

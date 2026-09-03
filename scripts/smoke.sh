@@ -104,13 +104,14 @@ R=$(curl -sS -m 30 -X POST "$BASE/api/ideas" -H 'Content-Type: text/plain' \
 expect "POST sai Content-Type bị từ chối" 400 "$(code "$R")"
 
 head_ "4. CRUD ý tưởng"
-IDEA='{"title":"5 mẹo quay video bằng điện thoại","script_outline":"1. Khoá nét 2. Ánh sáng cửa sổ 3. Quay ngang","platform":"tiktok","niche":"làm phim","tags":["quay phim","mẹo"]}'
+IDEA='{"title":"5 mẹo quay video bằng điện thoại","script_outline":"1. Khoá nét 2. Ánh sáng cửa sổ 3. Quay ngang","platform":"tiktok","niche":"làm phim","negative_prompt":"không nhạc bản quyền","tags":["quay phim","mẹo"]}'
 R=$(req POST /api/ideas "$IDEA" "$TOKEN_A")
 expect "POST /api/ideas trả 201" 201 "$(code "$R")"
 IDEA_ID=$(jqr "$(body "$R")" idea.id)
 if [ -n "$IDEA_ID" ]; then c_ok "tạo được ý tưởng ($IDEA_ID)"; else c_bad "không lấy được id ý tưởng"; fi
 # Tạo ý tưởng CHỈ ghi D1 — không nhúng, không đụng Vectorize. indexed phải là false.
 expect "tạo ý tưởng KHÔNG tự index (chỉ ghi D1)" "false" "$(jqr "$(body "$R")" indexed)"
+expect "negative prompt được lưu lại" "không nhạc bản quyền" "$(jqr "$(body "$R")" idea.negative_prompt)"
 
 R=$(req GET /api/sync "" "$TOKEN_A")
 expect "GET /api/sync trả 200" 200 "$(code "$R")"
@@ -162,8 +163,11 @@ R=$(req GET "/api/ideas/$IDEA_ID/variants" "" "$TOKEN_A")
 expect "GET biến thể trả 200" 200 "$(code "$R")"
 
 # Biến thể nằm trong văn bản đem đi nhúng, nên ý tưởng phải bẩn trở lại.
+# /api/sync nay đếm cả ba kho, nên nhắm thẳng vào riêng phần ý tưởng.
 R=$(req GET /api/sync "" "$TOKEN_A")
-expect "thêm biến thể làm ý tưởng cần đồng bộ lại" 1 "$(jqr "$(body "$R")" dirty)"
+expect "thêm biến thể làm ý tưởng cần đồng bộ lại" 1 "$(jqr "$(body "$R")" by_type.ideas)"
+expect "biến thể mới cũng cần được index" 1 "$(jqr "$(body "$R")" by_type.variants)"
+expect "hook mới cũng cần được index" 1 "$(jqr "$(body "$R")" by_type.hooks)"
 
 R=$(req GET "/api/prompt?variant_id=$VAR_ID&hook_id=$HOOK_ID" "" "$TOKEN_A")
 expect "sinh prompt trả 200" 200 "$(code "$R")"
@@ -188,6 +192,71 @@ expect "sinh prompt không hook vẫn trả 200" 200 "$(code "$R")"
 R=$(req GET /api/prompt-template "" "$TOKEN_A")
 expect "GET mẫu prompt trả 200" 200 "$(code "$R")"
 expect "chưa sửa thì là mẫu mặc định" "true" "$(jqr "$(body "$R")" is_default)"
+
+head_ "4c. Index từng mục"
+
+# Vectorize KHÔNG chạy được ở local (`wrangler pages dev` báo "Binding VEC needs to be
+# run remotely"), nên phần này tự dò: chạy với bản đã deploy thì khẳng định index thật
+# sự xong; chạy local thì khẳng định hợp đồng khi hỏng — endpoint vẫn trả 200, nói thẳng
+# indexed=false, và hàng Ở LẠI trạng thái bẩn để lần sau thử lại. Im lặng nuốt lỗi rồi
+# báo đã xong mới là điều không chấp nhận được.
+R=$(req POST "/api/ideas/$IDEA_ID/index" "" "$TOKEN_A")
+expect "index một ý tưởng trả 200" 200 "$(code "$R")"
+VEC_OK=$(jqr "$(body "$R")" idea.indexed)
+
+if [ "$VEC_OK" = "true" ]; then
+  c_ok "Vectorize dùng được — kiểm tra đường index đầy đủ"
+
+  R=$(req POST "/api/hooks/$HOOK_ID/index" "" "$TOKEN_A")
+  expect "index một hook trả 200" 200 "$(code "$R")"
+  expect "hook đó nay đã index" "true" "$(jqr "$(body "$R")" hook.indexed)"
+
+  R=$(req POST "/api/variants/$VAR_ID/index" "" "$TOKEN_A")
+  expect "index một biến thể trả 200" 200 "$(code "$R")"
+  expect "biến thể đó nay đã index" "true" "$(jqr "$(body "$R")" variant.indexed)"
+
+  R=$(req GET /api/sync "" "$TOKEN_A")
+  expect "index từng mục xong thì không còn gì bẩn" 0 "$(jqr "$(body "$R")" dirty)"
+else
+  printf '     Vectorize không dùng được ở đây (local dev không hỗ trợ binding VEC).\n'
+  printf '     Kiểm tra hợp đồng khi hỏng thay vì bỏ qua cả mục.\n'
+  expect "index hỏng thì nói thẳng indexed=false" "false" "$(jqr "$(body "$R")" indexed)"
+
+  R=$(req POST "/api/hooks/$HOOK_ID/index" "" "$TOKEN_A")
+  expect "index hook vẫn trả 200 chứ không phải 500" 200 "$(code "$R")"
+  R=$(req POST "/api/variants/$VAR_ID/index" "" "$TOKEN_A")
+  expect "index biến thể vẫn trả 200 chứ không phải 500" 200 "$(code "$R")"
+
+  # Điều quan trọng nhất: index hỏng KHÔNG được đánh dấu hàng là đã sạch.
+  R=$(req GET /api/sync "" "$TOKEN_A")
+  expect "index hỏng thì ý tưởng Ở LẠI trạng thái bẩn" 1 "$(jqr "$(body "$R")" by_type.ideas)"
+  expect "index hỏng thì hook ở lại trạng thái bẩn" 1 "$(jqr "$(body "$R")" by_type.hooks)"
+  expect "index hỏng thì biến thể ở lại trạng thái bẩn" 1 "$(jqr "$(body "$R")" by_type.variants)"
+fi
+
+R=$(req POST "/api/ideas/khong-co-that/index" "" "$TOKEN_A")
+expect "index id không tồn tại trả 404" 404 "$(code "$R")"
+
+head_ "4d. Kết hợp thành ý tưởng gốc mới"
+
+R=$(req POST /api/ideas/combine \
+     "{\"idea_id\":\"$IDEA_ID\",\"variant_id\":\"$VAR_ID\",\"hook_id\":\"$HOOK_ID\"}" "$TOKEN_A")
+expect "kết hợp trả 201" 201 "$(code "$R")"
+COMBO_ID=$(jqr "$(body "$R")" idea.id)
+if [ -n "$COMBO_ID" ]; then c_ok "kết hợp tạo ra ý tưởng gốc mới ($COMBO_ID)"; else c_bad "không lấy được id ý tưởng kết hợp"; fi
+expect "ý tưởng kết hợp ghi lineage ý tưởng nguồn" "$IDEA_ID" "$(jqr "$(body "$R")" idea.source_idea_id)"
+expect "ý tưởng kết hợp ghi lineage biến thể" "$VAR_ID" "$(jqr "$(body "$R")" idea.source_variant_id)"
+expect "ý tưởng kết hợp ghi lineage hook" "$HOOK_ID" "$(jqr "$(body "$R")" idea.source_hook_id)"
+expect "ý tưởng kết hợp sinh ra ở trạng thái chưa index" "false" "$(jqr "$(body "$R")" indexed)"
+expect "ý tưởng kết hợp kế thừa negative prompt" "không nhạc bản quyền" "$(jqr "$(body "$R")" idea.negative_prompt)"
+
+# Đây là điểm phân biệt với GET /api/prompt cũ: kết quả phải NẰM TRONG kho.
+R=$(req GET "/api/ideas/$COMBO_ID" "" "$TOKEN_A")
+expect "ý tưởng kết hợp thật sự nằm trong kho" 200 "$(code "$R")"
+
+R=$(req POST /api/ideas/combine \
+     "{\"idea_id\":\"$COMBO_ID\",\"variant_id\":\"$VAR_ID\"}" "$TOKEN_A")
+expect "biến thể của ý tưởng khác bị từ chối" 400 "$(code "$R")"
 
 head_ "5. Cách ly giữa các tài khoản"
 TOKEN_B=$(register_token "{\"email\":\"$EMAIL_B\",\"password\":\"$PW\"}")
@@ -216,6 +285,14 @@ expect "sinh prompt từ biến thể người khác trả 404" 404 "$(code "$R"
 R=$(req GET "/api/ideas?limit=50" "" "$TOKEN_B")
 COUNT_B=$(printf '%s' "$(body "$R")" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).items.length)}catch(e){console.log("?")}})')
 expect "danh sách của tài khoản B rỗng" 0 "$COUNT_B"
+
+R=$(req POST "/api/ideas/$IDEA_ID/index" "" "$TOKEN_B")
+expect "index ý tưởng của người khác trả 404" 404 "$(code "$R")"
+R=$(req POST "/api/hooks/$HOOK_ID/index" "" "$TOKEN_B")
+expect "index hook của người khác trả 404" 404 "$(code "$R")"
+R=$(req POST /api/ideas/combine \
+     "{\"idea_id\":\"$IDEA_ID\",\"variant_id\":\"$VAR_ID\"}" "$TOKEN_B")
+expect "kết hợp từ ý tưởng của người khác trả 404" 404 "$(code "$R")"
 
 head_ "6. Tìm kiếm ngữ nghĩa và gợi ý"
 R=$(req GET "/api/search?q=c%C3%A1ch%20c%E1%BA%A7m%20m%C3%A1y%20cho%20%C4%91%E1%BA%B9p" "" "$TOKEN_A")

@@ -1,14 +1,16 @@
 import type { Ctx } from '../http/guard';
 import { pathParam, readJson, requireUser } from '../http/guard';
-import { notFound } from '../http/response';
+import { badRequest, notFound } from '../http/response';
 import * as ideasDb from '../db/ideas';
 import * as likesDb from '../db/likes';
 import * as variantsDb from '../db/variants';
 import { setIdeaTags, tagsForIdeas } from '../db/tags';
 import { ideaEmbedText } from '../content';
 import { contentHash } from '../vec/embeddings';
-import { deleteIdeaVectors, metaSignature, queueGc } from '../vec/index';
+import { deleteVectors, metaSignature, queueGc, vectorId } from '../vec/index';
+import { indexOne } from '../vec/sync';
 import { invalidateTasteVector } from '../vec/profile';
+import { combine } from '../combine';
 import {
   IDEA_STATUSES,
   PLATFORMS,
@@ -46,6 +48,9 @@ function parseIdeaInput(body: Record<string, unknown>, base?: IdeaRow) {
     status: has('status') || !base
       ? oneOf<IdeaStatus>(body['status'], IDEA_STATUSES, 'status', 'idea')
       : base.status,
+    negative_prompt: has('negative_prompt') || !base
+      ? normText(body['negative_prompt'], 2000, 'negative_prompt')
+      : base.negative_prompt,
   };
 }
 
@@ -64,6 +69,10 @@ function toDto(
     niche: row.niche,
     status: row.status,
     visibility: row.visibility,
+    negative_prompt: row.negative_prompt,
+    source_idea_id: row.source_idea_id,
+    source_variant_id: row.source_variant_id,
+    source_hook_id: row.source_hook_id,
     tags,
     liked,
     variant_count: variantCount,
@@ -196,10 +205,11 @@ export async function deleteIdea(c: Ctx): Promise<Response> {
 
   // Xoá vector có thể hoãn: vector mồ côi không rò rỉ được vì tầng hydrate luôn
   // lọc theo user_id, nó chỉ chiếm một chỗ trong topK cho tới khi cron dọn.
+  const vid = vectorId('idea', id);
   c.executionCtx.waitUntil(
-    deleteIdeaVectors(c.env, [id]).catch(async (err) => {
-      console.error('deleteIdeaVectors failed', id, err);
-      await queueGc(c.env, [id], user.id).catch(() => {});
+    deleteVectors(c.env, [vid]).catch(async (err) => {
+      console.error('deleteVectors failed', vid, err);
+      await queueGc(c.env, [vid], user.id).catch(() => {});
     }),
   );
   c.executionCtx.waitUntil(invalidateTasteVector(c.env, user.id).catch(() => {}));
@@ -229,4 +239,64 @@ export async function listTagsRoute(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const { listTags } = await import('../db/tags');
   return c.json({ tags: await listTags(c.env, user.id) });
+}
+
+/**
+ * Index đúng ý tưởng này, ngay bây giờ — nút "Index" trên từng thẻ.
+ *
+ * POST chứ không GET: nó gọi Workers AI và ghi lên Vectorize. Xem quy tắc ở
+ * src/http/guard.ts.
+ *
+ * Phản hồi có thể mang `duplicates`: những ý tưởng khác của CHÍNH bạn mà vector vừa
+ * nhúng gần trùng. Đây là cảnh báo, không phải lỗi — việc index vẫn xong, và giữ hay
+ * bỏ là quyết định của người dùng.
+ */
+export async function indexIdea(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  const id = pathParam(c, 'id');
+  const result = await indexOne(c.env, user.id, 'idea', id);
+  if (!result) throw notFound('Không tìm thấy ý tưởng.');
+
+  const fresh = await ideasDb.getById(c.env, user.id, id);
+  if (!fresh) throw notFound('Không tìm thấy ý tưởng.');
+  const [dto] = await hydrate(c, user.id, [fresh]);
+  return c.json({ idea: dto, indexed: result.indexed, duplicates: result.duplicates });
+}
+
+/**
+ * Kết hợp gốc + biến thể + hook thành một ý tưởng gốc MỚI.
+ *
+ * POST vì nó ghi dữ liệu — GET không được phép, xem src/http/guard.ts. Toàn bộ nghiệp
+ * vụ nằm ở src/combine.ts; ở đây chỉ đọc request và dịch mã lỗi sang HTTP.
+ */
+export async function combineIdea(c: Ctx): Promise<Response> {
+  const user = requireUser(c);
+  const body = await readJson(c);
+
+  const hookRaw = body['hook_id'];
+  const result = await combine(c.env, user.id, {
+    ideaId: requiredText(body['idea_id'], 100, 'idea_id'),
+    variantId: requiredText(body['variant_id'], 100, 'variant_id'),
+    hookId: hookRaw === null || hookRaw === undefined || hookRaw === ''
+      ? null
+      : requiredText(hookRaw, 100, 'hook_id'),
+    ...(body['title'] === undefined ? {} : { title: normText(body['title'], 200, 'title') }),
+  });
+
+  if (!result.ok) {
+    if (result.error === 'variant_mismatch') {
+      throw badRequest('variant_mismatch', 'Biến thể này không thuộc ý tưởng gốc đã chọn.');
+    }
+    throw notFound({
+      idea_not_found: 'Không tìm thấy ý tưởng gốc.',
+      variant_not_found: 'Không tìm thấy biến thể.',
+      hook_not_found: 'Không tìm thấy hook.',
+    }[result.error]);
+  }
+
+  // Hàng mới sinh ra đã "bẩn" (embedded_hash NULL) nên nút Index của nó sáng ngay.
+  return c.json(
+    { idea: toDto(result.row, result.tags, false, 0), prompt: result.prompt, indexed: false },
+    201,
+  );
 }

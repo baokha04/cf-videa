@@ -47,9 +47,11 @@ async function load(append = false) {
  */
 async function refreshSyncState() {
   let dirty = null;
+  let byType = null;
   try {
     const r = await get('/api/sync');
     dirty = typeof r.dirty === 'number' ? r.dirty : null;
+    byType = r.by_type ?? null;
   } catch {
     dirty = null;
   }
@@ -64,9 +66,17 @@ async function refreshSyncState() {
 
   const pending = dirty > 0;
   syncBox.classList.toggle('pending', pending);
+  // Tách theo loại vì ba kho được index riêng: "3 mục chưa index" mà không nói mục
+  // nào thì người dùng đi tìm khắp ba trang.
+  const parts = [];
+  if (byType) {
+    if (byType.ideas > 0) parts.push(`${byType.ideas} ý tưởng`);
+    if (byType.variants > 0) parts.push(`${byType.variants} biến thể`);
+    if (byType.hooks > 0) parts.push(`${byType.hooks} hook`);
+  }
   syncTitle.textContent = pending
-    ? `${dirty} ý tưởng chưa được index`
-    : 'Mọi ý tưởng đã được index';
+    ? `${parts.length ? parts.join(', ') : `${dirty} mục`} chưa được index`
+    : 'Mọi ý tưởng, biến thể và hook đã được index';
   syncNote.textContent = pending
     ? 'Chưa tìm được bằng tìm kiếm ngữ nghĩa cho tới khi bạn đồng bộ.'
     : 'Tìm kiếm ngữ nghĩa đang bám sát dữ liệu.';
@@ -97,6 +107,34 @@ $('#filters').addEventListener('submit', (e) => {
 
 moreBtn.addEventListener('click', () => load(true));
 
+/**
+ * Nút Index trên từng thẻ ý tưởng.
+ *
+ * Đường này KHÁC nút đồng bộ hàng loạt bên dưới: nó index đúng ý tưởng được bấm, và
+ * chỉ nó mới trả về cảnh báo trùng.
+ */
+listEl.addEventListener('click', async (e) => {
+  const indexId = e.target?.dataset?.index;
+  if (!indexId) return;
+  e.target.disabled = true;
+  e.target.textContent = '…';
+  try {
+    const r = await post(`/api/ideas/${encodeURIComponent(indexId)}/index`);
+    if (r.duplicates?.length) {
+      const names = r.duplicates.map((d) => d.title).join(', ');
+      show(msgEl, `Đã index. Có thể trùng với: ${names}. Mở ý tưởng để xem chi tiết.`, 'note');
+    } else {
+      show(msgEl, r.indexed
+        ? 'Đã index. Tìm kiếm ngữ nghĩa thấy được sau khoảng một phút nữa.'
+        : 'Index chưa xong, thử lại sau.', r.indexed ? 'ok' : 'note');
+    }
+  } catch (err) {
+    show(msgEl, err.message);
+  }
+  await refreshSyncState();
+  await load(false);
+});
+
 reindexBtn.addEventListener('click', async () => {
   reindexBtn.disabled = true;
   show(msgEl, '');
@@ -119,7 +157,7 @@ reindexBtn.addEventListener('click', async () => {
     if (remaining > 0) {
       show(
         msgEl,
-        `Đã đồng bộ ${done} ý tưởng, còn ${remaining} chưa xong` +
+        `Đã đồng bộ ${done} mục, còn ${remaining} chưa xong` +
           (failed > 0 ? ` (${failed} lỗi)` : '') +
           '. Thử lại sau ít phút.',
         'note',
@@ -129,7 +167,7 @@ reindexBtn.addEventListener('click', async () => {
       // dùng không tưởng tìm kiếm bị hỏng khi thử ngay lập tức.
       show(
         msgEl,
-        `Đã đồng bộ ${done} ý tưởng. Tìm kiếm ngữ nghĩa sẽ thấy chúng sau khoảng một phút.`,
+        `Đã đồng bộ ${done} mục. Tìm kiếm ngữ nghĩa sẽ thấy chúng sau khoảng một phút.`,
         'ok',
       );
     }

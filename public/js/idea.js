@@ -7,11 +7,11 @@ await mountNav('/app');
 // Ba thông báo, gom lại một chỗ để chúng không lệch nhau khi sửa.
 const SAVED_MSG =
   'Đã lưu vào cơ sở dữ liệu. Ý tưởng chưa nằm trong tìm kiếm ngữ nghĩa — '
-  + 'bấm "Đồng bộ index" ở trang kho ý tưởng khi bạn viết xong.';
+  + 'bấm "Index ý tưởng này" khi bạn viết xong.';
 const SAVED_INDEXED_MSG = 'Đã lưu. Ý tưởng vẫn đang khớp với tìm kiếm ngữ nghĩa.';
 const CREATED_MSG =
-  'Đã tạo ý tưởng và lưu vào cơ sở dữ liệu. Nhớ bấm "Đồng bộ index" ở trang kho ý '
-  + 'tưởng để nó xuất hiện trong tìm kiếm ngữ nghĩa.';
+  'Đã tạo ý tưởng và lưu vào cơ sở dữ liệu. Bấm "Index ý tưởng này" để nó xuất hiện '
+  + 'trong tìm kiếm ngữ nghĩa.';
 
 const id = new URLSearchParams(location.search).get('id');
 const isNew = !id;
@@ -19,6 +19,8 @@ const msg = $('#msg');
 const saveBtn = $('#save');
 const likeBtn = $('#like');
 const delBtn = $('#del');
+const indexBtn = $('#index-one');
+const dupWarn = $('#dup-warn');
 
 let liked = false;
 // Khai báo Ở ĐÂY chứ không phải cạnh các hàm dùng chúng: `let` nằm trong vùng chết
@@ -32,6 +34,7 @@ function readForm() {
   return {
     title: $('#title').value.trim(),
     script_outline: $('#script_outline').value,
+    negative_prompt: $('#negative_prompt').value,
     platform: $('#platform').value,
     status: $('#status').value,
     niche: $('#niche').value.trim(),
@@ -45,6 +48,7 @@ function readForm() {
 function fill(idea) {
   $('#title').value = idea.title;
   $('#script_outline').value = idea.script_outline;
+  $('#negative_prompt').value = idea.negative_prompt ?? '';
   $('#platform').value = idea.platform;
   $('#status').value = idea.status;
   $('#niche').value = idea.niche;
@@ -54,9 +58,37 @@ function fill(idea) {
   likeBtn.hidden = false;
   delBtn.hidden = false;
   $('#heading').textContent = idea.title;
+  $('#pidea').value = idea.title;
   $('#sub').textContent = idea.indexed
     ? 'Đã nằm trong tìm kiếm ngữ nghĩa.'
-    : 'Chưa index — bấm "Đồng bộ index" ở trang kho ý tưởng khi bạn viết xong.';
+    : 'Chưa index — bấm "Index ý tưởng này" khi bạn viết xong.';
+  indexBtn.hidden = false;
+  // Đã sạch thì vẫn bấm được, chỉ là không có việc gì để làm. Ghi rõ trên nhãn thay
+  // vì vô hiệu hoá nút: nút chết mà không nói lý do là kiểu tệ nhất.
+  indexBtn.textContent = idea.indexed ? 'Index lại ý tưởng này' : 'Index ý tưởng này';
+
+  if (idea.source_idea_id) {
+    $('#sub').textContent += ' Ý tưởng này được tạo bằng chức năng kết hợp.';
+  }
+}
+
+/** Cảnh báo trùng — có liên kết đi tới từng ý tưởng để người dùng tự so. */
+function showDuplicates(list) {
+  if (!list || list.length === 0) {
+    dupWarn.hidden = true;
+    dupWarn.textContent = '';
+    return;
+  }
+  const items = list
+    .map((d) => `<li><a href="/idea?id=${encodeURIComponent(d.id)}">${esc(d.title)}</a>`
+      + ` <span class="muted small">(giống ${(d.score * 100).toFixed(0)}%)</span></li>`)
+    .join('');
+  dupWarn.innerHTML =
+    `<strong>Có thể đã có ý tưởng tương tự:</strong><ul>${items}</ul>`
+    + '<p class="muted small">Ý tưởng vẫn được index bình thường — đây chỉ là cảnh báo.'
+    + ' Hai ý tưởng index cách nhau dưới một phút có thể chưa thấy nhau, vì Vectorize'
+    + ' mất khoảng chừng đó mới truy vấn được vector vừa ghi.</p>';
+  dupWarn.hidden = false;
 }
 
 async function loadSimilar() {
@@ -92,12 +124,16 @@ if (!isNew) {
 
 // --- Biến thể --------------------------------------------------------------
 
+// Biến thể nay có vector RIÊNG, nên có trạng thái index riêng. Cờ `indexed` do server
+// tính (routes/variants.ts) — giao diện không dựng lại phép so hash.
 function variantCard(v) {
   return `<article class="card variant">
     <h3>${esc(v.title)}</h3>
     ${v.angle ? `<p class="hook">${esc(v.angle)}</p>` : ''}
     <div class="meta">
       <span class="chip">${v.script_outline.trim() ? 'dàn ý riêng' : 'dùng dàn ý gốc'}</span>
+      ${v.indexed ? '' : '<span class="chip pending" title="Chưa nằm trong tìm kiếm ngữ nghĩa">chưa index</span>'}
+      <button class="link" type="button" data-vindex="${esc(v.id)}">Index</button>
       <button class="link" type="button" data-vedit="${esc(v.id)}">Sửa</button>
       <button class="link" type="button" data-vdel="${esc(v.id)}">Xoá</button>
     </div>
@@ -117,7 +153,8 @@ async function loadVariants() {
   if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
   // Không có biến thể thì không ghép được prompt — nói rõ thay vì để nút chết câm.
   $('#pgen').disabled = variants.length === 0;
-  show($('#pmsg'), variants.length ? '' : 'Thêm ít nhất một biến thể để tạo prompt.',
+  $('#psave').disabled = variants.length === 0;
+  show($('#pmsg'), variants.length ? '' : 'Thêm ít nhất một biến thể để kết hợp.',
        variants.length ? 'ok' : 'note');
 }
 
@@ -172,7 +209,7 @@ if (!isNew) {
       resetVariantForm();
       await loadVariants();
       // Biến thể nằm trong văn bản đem đi nhúng, nên ý tưởng vừa trở lại "chưa đồng bộ".
-      show($('#vmsg'), 'Đã lưu. Nhớ bấm "Đồng bộ index" ở trang kho ý tưởng.', 'note');
+      show($('#vmsg'), 'Đã lưu. Bấm "Index" trên thẻ biến thể để nó vào tìm kiếm.', 'note');
     } catch (err) {
       show($('#vmsg'), err.message);
     }
@@ -183,6 +220,22 @@ if (!isNew) {
   $('#variants').addEventListener('click', async (e) => {
     const editId = e.target?.dataset?.vedit;
     const delId = e.target?.dataset?.vdel;
+    const indexId = e.target?.dataset?.vindex;
+    if (indexId) {
+      e.target.disabled = true;
+      e.target.textContent = '…';
+      try {
+        const res = await post(`/api/variants/${encodeURIComponent(indexId)}/index`);
+        await loadVariants();
+        show($('#vmsg'), res.indexed
+          ? 'Đã index biến thể. Tìm được sau khoảng một phút nữa.'
+          : 'Index chưa xong, thử lại sau.', res.indexed ? 'ok' : 'note');
+      } catch (err) {
+        show($('#vmsg'), err.message);
+        await loadVariants();
+      }
+      return;
+    }
     if (editId) {
       const v = variants.find((x) => x.id === editId);
       if (!v) return;
@@ -229,6 +282,28 @@ if (!isNew) {
     }
   });
 
+  $('#psave').addEventListener('click', async () => {
+    const vid = $('#pvariant').value;
+    if (!vid) return;
+    const hid = $('#phook').value;
+    $('#psave').disabled = true;
+    $('#psave').textContent = 'Đang lưu…';
+    try {
+      const res = await post('/api/ideas/combine', {
+        idea_id: id,
+        variant_id: vid,
+        hook_id: hid || null,
+      });
+      // Đi thẳng sang ý tưởng vừa tạo: nó là một ý tưởng gốc đầy đủ, và việc kế tiếp
+      // gần như luôn là bấm Index cho nó.
+      location.assign(`/idea?id=${encodeURIComponent(res.idea.id)}&created=1`);
+    } catch (err) {
+      show($('#pmsg'), err.message);
+      $('#psave').disabled = false;
+      $('#psave').textContent = 'Lưu thành ý tưởng gốc';
+    }
+  });
+
   $('#pcopy').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText($('#pout').textContent);
@@ -269,6 +344,29 @@ $('#f').addEventListener('submit', async (e) => {
     saveBtn.textContent = 'Lưu';
   }
 });
+
+if (!isNew) {
+  indexBtn.addEventListener('click', async () => {
+    indexBtn.disabled = true;
+    const label = indexBtn.textContent;
+    indexBtn.textContent = 'Đang index…';
+    showDuplicates([]);
+    try {
+      const res = await post(`/api/ideas/${encodeURIComponent(id)}/index`);
+      fill(res.idea);
+      showDuplicates(res.duplicates);
+      show(msg, res.indexed
+        ? 'Đã index. Tìm kiếm ngữ nghĩa thấy được sau khoảng một phút nữa.'
+        : 'Index chưa xong — ý tưởng vẫn ở trạng thái chưa đồng bộ. Thử lại sau.',
+        res.indexed ? 'ok' : 'note');
+    } catch (err) {
+      show(msg, err.message);
+      indexBtn.textContent = label;
+    } finally {
+      indexBtn.disabled = false;
+    }
+  });
+}
 
 likeBtn.addEventListener('click', async () => {
   likeBtn.disabled = true;

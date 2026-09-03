@@ -70,6 +70,10 @@ export function ideaCard(idea) {
     ? `<span class="chip">${idea.variant_count} biến thể</span>`
     : '';
 
+  const combined = idea.source_idea_id
+    ? '<span class="chip" title="Được tạo bằng chức năng kết hợp">kết hợp</span>'
+    : '';
+
   return `<article class="card idea">
     <h3><a href="/idea?id=${encodeURIComponent(idea.id)}">${esc(idea.title)}</a></h3>
     ${idea.script_outline ? `<p class="hook">${esc(idea.script_outline.slice(0, 140))}</p>` : ''}
@@ -77,7 +81,8 @@ export function ideaCard(idea) {
       <span class="chip">${esc(platformLabel(idea.platform))}</span>
       <span class="chip">${esc(statusLabel(idea.status))}</span>
       ${idea.niche ? `<span class="chip">${esc(idea.niche)}</span>` : ''}
-      ${variants}${tags}${liked}${score}${pending}
+      ${variants}${tags}${liked}${score}${combined}${pending}
+      <button class="link" type="button" data-index="${esc(idea.id)}">Index</button>
     </div>
   </article>`;
 }

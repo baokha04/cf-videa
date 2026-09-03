@@ -2,9 +2,11 @@ import type { Ctx } from '../http/guard';
 import { readJson, requireAdmin, requireUser } from '../http/guard';
 import { badRequest } from '../http/response';
 import * as ideasDb from '../db/ideas';
+import * as hooksDb from '../db/hooks';
+import * as variantsDb from '../db/variants';
 import { recordMaintenanceRun, sweepExpiredSessions } from '../auth/session';
 import { sweepRateLimits } from '../auth/ratelimit';
-import { drainVectorGc, reconcile } from '../vec/sync';
+import { drainVectorGc, reconcileAll } from '../vec/sync';
 import {
   DEFAULT_TEMPLATE,
   TEMPLATE_VARS,
@@ -17,9 +19,14 @@ import {
 export async function health(c: Ctx): Promise<Response> {
   const out: Record<string, unknown> = { ok: true, env: c.env.APP_ENV };
   try {
+    // Dùng lại đúng ba hằng DIRTY_SQL thay vì viết lại điều kiện: bản viết tay trước
+    // đây thiếu vế indexed_meta_hash, nên /api/health báo ít hơn /api/sync với cùng một
+    // database mà không ai biết vì sao.
     const row = await c.env.DB.prepare(
-      `SELECT (SELECT COUNT(*) FROM ideas
-                WHERE embedded_hash IS NULL OR embedded_hash <> content_hash) AS dirty_ideas,
+      `SELECT (SELECT COUNT(*) FROM ideas WHERE ${ideasDb.DIRTY_SQL})         AS dirty_ideas,
+              (SELECT COUNT(*) FROM idea_variants WHERE ${variantsDb.VARIANT_DIRTY_SQL})
+                AS dirty_variants,
+              (SELECT COUNT(*) FROM hooks WHERE ${hooksDb.HOOK_DIRTY_SQL})    AS dirty_hooks,
               (SELECT COUNT(*) FROM vector_gc)  AS gc_pending,
               (SELECT COUNT(*) FROM sessions WHERE expires_at > ?1) AS sessions_active,
               (SELECT ran_at FROM maintenance_runs WHERE id = 1)    AS maintenance_last_run_at,
@@ -28,6 +35,8 @@ export async function health(c: Ctx): Promise<Response> {
       .bind(Date.now())
       .first<{
         dirty_ideas: number;
+        dirty_variants: number;
+        dirty_hooks: number;
         gc_pending: number;
         sessions_active: number;
         maintenance_last_run_at: number | null;
@@ -88,22 +97,37 @@ export async function resetPromptTemplate(c: Ctx): Promise<Response> {
 }
 
 /**
- * Trạng thái đồng bộ CỦA CHÍNH người dùng đang đăng nhập.
+ * Trạng thái đồng bộ CỦA CHÍNH người dùng đang đăng nhập, tách theo từng loại.
  *
  * Cố ý không dùng `dirty_ideas` của /api/health cho việc này: con số đó đếm toàn hệ
  * thống và endpoint đó lại công khai, nên vừa sai (lẫn ý tưởng của người khác) vừa
  * không nên là nguồn dữ liệu cho giao diện của một tài khoản cụ thể.
+ *
+ * `dirty` là tổng của cả ba loại — giao diện cũ chỉ đọc trường này nên nó phải giữ
+ * nguyên ý nghĩa "còn bao nhiêu thứ chưa lên Vectorize".
  */
 export async function syncStatus(c: Ctx): Promise<Response> {
   const user = requireUser(c);
-  return c.json({ dirty: await ideasDb.countDirty(c.env, user.id) });
+  const [ideas, variants, hooks] = await Promise.all([
+    ideasDb.countDirty(c.env, user.id),
+    variantsDb.countDirty(c.env, user.id),
+    hooksDb.countDirty(c.env, user.id),
+  ]);
+  return c.json({ dirty: ideas + variants + hooks, by_type: { ideas, variants, hooks } });
 }
 
-/** Đối soát cho chính người dùng đang đăng nhập — nút "Đồng bộ index" trên UI. */
+/**
+ * Đối soát cho chính người dùng đang đăng nhập — nút "Đồng bộ index" trên UI.
+ *
+ * Đây là đường HÀNG LOẠT. Nút Index của từng mục đi đường khác (indexOne), vì worklist
+ * ở đây sắp theo `updated_at` và không nhắm được vào một hàng cụ thể.
+ *
+ * 50 áp cho TỪNG loại, không phải tổng: ba loại dùng ba worklist riêng, và chia nhỏ
+ * hạn mức theo tỷ lệ chỉ làm mỗi vòng gọi lại nhiều hơn mà không rẻ đi.
+ */
 export async function reindexMine(c: Ctx): Promise<Response> {
   const user = requireUser(c);
-  const result = await reconcile(c.env, 50, user.id);
-  return c.json(result);
+  return c.json(await reconcileAll(c.env, 50, user.id));
 }
 
 /** Đối soát toàn hệ thống — chỉ dành cho ADMIN_TOKEN. */
@@ -116,13 +140,18 @@ export async function reindexAdmin(c: Ctx): Promise<Response> {
   const userId = typeof body['user_id'] === 'string' ? (body['user_id'] as string) : undefined;
 
   if (scope === 'all') {
-    // Ép mọi hàng thành bẩn rồi mới đối soát — đây cũng là quy trình đổi model.
-    await ideasDb.markAllDirty(c.env, userId);
+    // Ép mọi hàng thành bẩn rồi mới đối soát — đây cũng là quy trình đổi model, và là
+    // cách chạy lại sau khi thêm một metadata index mới trên Vectorize.
+    await Promise.all([
+      ideasDb.markAllDirty(c.env, userId),
+      variantsDb.markAllDirty(c.env, userId),
+      hooksDb.markAllDirty(c.env, userId),
+    ]);
   } else if (scope !== 'dirty' && scope !== 'user') {
     throw badRequest('invalid_scope', 'scope phải là dirty, all hoặc user.');
   }
 
-  const result = await reconcile(c.env, limit, userId);
+  const result = await reconcileAll(c.env, limit, userId);
   const gc = await drainVectorGc(c.env, 100);
   return c.json({ ...result, gc_drained: gc });
 }
@@ -143,7 +172,7 @@ export async function maintenance(c: Ctx): Promise<Response> {
     sweepRateLimits(c.env),
     drainVectorGc(c.env, 100),
   ]);
-  const reindexed = await reconcile(c.env, 50);
+  const reindexed = await reconcileAll(c.env, 50);
   await recordMaintenanceRun(
     c.env,
     { sessions: sessionsGc, rate: rateGc, vector: vecGc, reindexed: reindexed.processed },
