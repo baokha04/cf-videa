@@ -322,22 +322,6 @@ button.link {
 a.chip { text-decoration: none; }
 .chip.pending { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
 
-/* --- Nguồn gốc kết hợp ---------------------------------------------------- */
-/* Không dùng .msg: đây không phải thông báo về việc vừa xảy ra mà là một thuộc tính
-   thường trực của ý tưởng, nên nó phải trông như dữ liệu chứ không như cảnh báo. */
-.lineage {
-  margin: -4px 0 16px;
-  padding: 10px 14px;
-  border-left: 3px solid var(--accent);
-  background: var(--surface-2);
-  border-radius: 0 var(--radius) var(--radius) 0;
-  font-size: 14px;
-  color: var(--muted);
-  line-height: 1.6;
-}
-.lineage strong { color: var(--text); font-weight: 600; }
-.lineage .gone { font-style: italic; }
-
 /* --- Thông báo ----------------------------------------------------------- */
 .msg { padding: 11px 14px; border-radius: 10px; margin: 14px 0; font-size: 15px; }
 .msg.error { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
@@ -401,12 +385,8 @@ th { color: var(--muted); font-weight: 550; font-size: 13px; }
 .variant h3 { margin: 0 0 4px; font-size: 16px; }
 
 /* --- Prompt --------------------------------------------------------------- */
-.mono {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 14px;
-}
-textarea.tall { min-height: 300px; }
-
+/* .mono và textarea.tall đã bỏ cùng ô sửa mẫu prompt ở /account — chúng chỉ phục vụ
+   đúng ô đó. .prompt-out vẫn còn vì /recommend dùng để in prompt xem trước. */
 .prompt-out {
   margin: 14px 0 0;
   padding: 14px;

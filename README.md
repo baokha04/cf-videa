@@ -116,7 +116,12 @@ Hai quy tắc đáng nhớ:
 Mẫu mặc định để **nội dung tiếng Việt, nhãn cấu trúc tiếng Anh** (Concept, Hook,
 Angle, Script outline…): các công cụ video AI dựa vào những nhãn đó để hiểu bố cục
 prompt và nhận diện tiếng Anh tốt hơn hẳn, trong khi nội dung sáng tạo để nguyên
-tiếng Việt vẫn tốt hơn dịch máy. Sửa mẫu ở trang **Tài khoản**.
+tiếng Việt vẫn tốt hơn dịch máy.
+
+**Không còn giao diện sửa mẫu.** Ô soạn mẫu ở trang Tài khoản đã bỏ, nên mọi người dùng
+chạy trên `DEFAULT_TEMPLATE`. Ba endpoint `/api/prompt-template` vẫn còn và vẫn chạy —
+tài khoản nào đã lưu mẫu riêng từ trước thì mẫu đó vẫn được áp dụng, và chỉ đổi được qua
+API chứ không qua giao diện.
 
 **Cả ba kho đều có vector riêng, chung một index Vectorize.** Phân biệt bằng metadata
 `type` (`idea` | `variant` | `hook`); id vector của hook và biến thể mang tiền tố
@@ -373,19 +378,10 @@ lên Vectorize mới là việc người dùng vừa bấm nút để làm.
 mới**, khác hẳn `GET /api/prompt` vốn chỉ ghép ra chuỗi rồi thôi. Ba cột
 `source_idea_id` / `source_variant_id` / `source_hook_id` (migration 0006) ghi lại xuất xứ.
 
-**Xuất xứ đó được HIỆN ra, không chỉ lưu.** `GET /api/ideas/:id` tra sẵn tên cho ba id ấy
-và trả kèm trường `source`; trang `/idea` dựng từ đó một dòng "Ghép từ … + biến thể … +
-hook …", mỗi mảnh là một liên kết đi tới đúng mục. Trước đây trang chỉ nói được một câu
-chung chung "được tạo bằng chức năng kết hợp" — người dùng nhìn ý tưởng mà không biết nó
-ra đời từ biến thể nào, hook nào.
-
-Việc tra tên cố ý **chỉ nằm ở endpoint một-ý-tưởng**, không ở danh sách: mỗi ý tưởng tốn
-thêm ba truy vấn, và một trang 20 mục sẽ thành 60 truy vấn chỉ để hiện một dòng phụ.
-Ba mảnh độc lập nhau và mảnh nào cũng có thể vắng — cả ba khoá ngoại đều `ON DELETE SET
-NULL`, nên xoá nguồn sau khi kết hợp là hợp lệ. Ý tưởng gốc và biến thể là **bắt buộc**
-lúc kết hợp nên vắng mặt chỉ có thể là "đã bị xoá" và giao diện nói đúng như vậy; hook thì
-tuỳ chọn, nên `source_hook_id` NULL là "không dùng hook" và không nêu gì cả — gộp hai
-trường hợp lại thành một câu là nói dối ở đúng lúc người dùng cần biết.
+Ba cột đó hiện chỉ để **lưu vết**, giao diện không đọc chúng: trang `/idea` từng dựng một
+dòng "Ghép từ … + biến thể … + hook …" nhưng đã bỏ, và `GET /api/ideas/:id` cũng đã bỏ
+trường `source` đi kèm. Cột vẫn giữ vì chúng là dữ liệu thật về xuất xứ, dựng lại giao
+diện lúc nào cũng được mà không cần migration.
 
 **Khối kết hợp chỉ nằm ở trang gợi ý** (`/recommend`, chọn ý tưởng từ toàn kho qua
 `/api/ideas/titles`). Đó là nơi bạn vừa nhìn thấy một ý tưởng cũ đáng làm lại, nên ghép
@@ -562,8 +558,8 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | PATCH · DELETE | `/api/variants/:id` | ✓ | |
 | POST | `/api/variants/:id/index` | ✓ | Index đúng biến thể đó |
 | GET | `/api/prompt` | ✓ | `?variant_id=&hook_id=` — hook để trống vẫn ghép được |
-| GET · PUT · DELETE | `/api/prompt-template` | ✓ | Đọc / lưu / đưa về mặc định |
-| GET · PATCH · DELETE | `/api/ideas/:id` | ✓ | 404 khi không phải của bạn; GET kèm `source` (tên ý tưởng/biến thể/hook nguồn, `null` nếu tự nhập) |
+| GET · PUT · DELETE | `/api/prompt-template` | ✓ | Đọc / lưu / đưa về mặc định. **Không còn giao diện** — xem ghi chú ở mục Ghép prompt |
+| GET · PATCH · DELETE | `/api/ideas/:id` | ✓ | 404 khi không phải của bạn |
 | POST · DELETE | `/api/ideas/:id/like` | ✓ | Idempotent |
 | GET | `/api/ideas/:id/similar` | ✓ | Dùng lại vector đã lưu |
 | GET | `/api/search` | ✓ | Ngữ nghĩa; lùi về từ khoá khi AI/Vectorize hỏng |
