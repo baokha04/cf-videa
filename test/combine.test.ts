@@ -70,7 +70,7 @@ describe('kết hợp thành ý tưởng gốc mới', () => {
   });
 
   it('ý tưởng kết hợp sinh ra ở trạng thái CHƯA index', async () => {
-    // Nếu chỗ này hỏng thì ý tưởng mới sẽ không bao giờ hiện ở nút đồng bộ và vĩnh
+    // Nếu chỗ này hỏng thì ý tưởng mới sẽ không bao giờ hiện ra là chưa index và vĩnh
     // viễn không tìm được bằng tìm kiếm ngữ nghĩa.
     const res = await combine(testEnv(), uid, {
       ideaId: idea.id, variantId: variant.id, hookId: null,

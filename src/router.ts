@@ -122,8 +122,8 @@ app.delete('/prompt-template', admin.resetPromptTemplate);
 app.get('/search', search.search);
 app.get('/recommendations', recommend.recommendations);
 app.get('/tags', ideas.listTagsRoute);
+// Chỉ đọc: giao diện index theo từng mục, endpoint này còn lại để soi trạng thái.
 app.get('/sync', admin.syncStatus);
-app.post('/reindex', admin.reindexMine);
 
 app.post('/admin/reindex', admin.reindexAdmin);
 app.post('/admin/maintenance', admin.maintenance);

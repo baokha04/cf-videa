@@ -319,28 +319,6 @@ button.link {
 a.chip { text-decoration: none; }
 .chip.pending { color: var(--warn); background: var(--warn-bg); border-color: transparent; }
 
-/* --- Thanh đồng bộ ------------------------------------------------------- */
-/* Nổi bật hơn thẻ thường: đây là hành động người dùng phải chủ động làm, vì việc
-   index cố ý không tự chạy khi lưu ý tưởng. */
-.sync {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-.sync.pending { background: var(--warn-bg); border-color: transparent; }
-.sync .sync-text { flex: 1 1 200px; min-width: 0; font-size: 15px; }
-.sync .sync-text strong { display: block; }
-.sync .sync-text span { color: var(--muted); font-size: 13px; }
-.sync.pending .sync-text strong { color: var(--warn); }
-.sync button { flex: 0 0 auto; }
-@media (max-width: 560px) { .sync button { flex: 1 1 100%; } }
-
 /* --- Thông báo ----------------------------------------------------------- */
 .msg { padding: 11px 14px; border-radius: 10px; margin: 14px 0; font-size: 15px; }
 .msg.error { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }

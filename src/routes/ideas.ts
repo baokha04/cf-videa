@@ -134,9 +134,9 @@ export async function listIdeas(c: Ctx): Promise<Response> {
  * Workers AI và vài trăm mili giây cho mỗi lần lưu, trong khi người dùng thường sửa
  * đi sửa lại vài lần trước khi ưng — mỗi lần như vậy đều đốt một lời gọi cho một bản
  * nháp sẽ bị ghi đè ngay sau đó. Nên việc index dồn lại và do người dùng bấm nút
- * "Đồng bộ index" khi họ thấy đã xong.
+ * "Index" của chính ý tưởng đó khi họ thấy đã xong.
  *
- * Hàng vừa tạo tự động là "bẩn" (embedded_hash NULL), nên nút đồng bộ sẽ thấy nó.
+ * Hàng vừa tạo tự động là "bẩn" (embedded_hash NULL), nên nó hiện ra là chưa index.
  */
 export async function createIdea(c: Ctx): Promise<Response> {
   const user = requireUser(c);
@@ -188,7 +188,7 @@ export async function updateIdea(c: Ctx): Promise<Response> {
 
   // Như createIdea: chỉ ghi D1, không đụng Vectorize.
   //
-  // Đổi mỗi trạng thái cũng phải được nút đồng bộ nhìn thấy, dù content_hash không
+  // Đổi mỗi trạng thái cũng phải làm hàng bẩn trở lại, dù content_hash không
   // đổi — nếu không, metadata trên Vectorize mốc lại và /api/search?status=… lọc sai.
   // Cột indexed_meta_hash lo việc đó (xem migrations/0004), nên ở đây không cần
   // phân biệt loại thay đổi nào cả.

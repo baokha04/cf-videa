@@ -329,10 +329,6 @@ R=$(req GET /api/recommendations "" "$TOKEN_A")
 expect "GET /api/recommendations trả 200" 200 "$(code "$R")"
 echo "     basis=$(jqr "$(body "$R")" basis)"
 
-R=$(req POST /api/reindex "" "$TOKEN_A")
-expect "POST /api/reindex trả 200" 200 "$(code "$R")"
-echo "     $(body "$R")"
-
 head_ "6b. Ghi nhớ đăng nhập"
 # Cookie có Max-Age = sống qua lần đóng trình duyệt. Không có = cookie phiên.
 CK_REMEMBER=$(curl -sS -m 30 -D - -o /dev/null -X POST "$BASE/api/auth/login" \
