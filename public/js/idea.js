@@ -20,14 +20,9 @@ const delBtn = $('#del');
 const indexBtn = $('#index-one');
 const dupWarn = $('#dup-warn');
 const lineageEl = $('#lineage');
+const variantsLink = $('#to-variants');
 
 let liked = false;
-// Khai báo Ở ĐÂY chứ không phải cạnh các hàm dùng chúng: `let` nằm trong vùng chết
-// tạm thời cho tới khi dòng khai báo được chạy, nên đặt sau đoạn nạp trang thì
-// loadVariants() sẽ ném ReferenceError ngay lần chạy đầu — và vì lời gọi đó nằm
-// trong try/catch, lỗi bị nuốt và các bước sau đó âm thầm không chạy.
-let variants = [];
-let editingVariant = null;
 
 function readForm() {
   return {
@@ -107,18 +102,21 @@ function fill(idea) {
   likeBtn.hidden = false;
   delBtn.hidden = false;
   $('#heading').textContent = idea.title;
-  $('#pidea').value = idea.title;
   $('#sub').textContent = idea.indexed
     ? 'Đã nằm trong tìm kiếm ngữ nghĩa.'
     : 'Chưa index — bấm "Index ý tưởng này" khi bạn viết xong.';
   indexBtn.hidden = false;
+  // Trang này không quản lý biến thể nữa, nên phải chỉ đường sang chỗ quản lý — bỏ
+  // khối đi mà không để lối sang thì biến thể của ý tưởng này thành ngõ cụt.
+  variantsLink.href = `/variants?idea=${encodeURIComponent(id)}`;
+  variantsLink.hidden = false;
   // Form đã mang dữ liệu thật — giờ mới cho bấm Lưu (xem chú thích ở nút Lưu bên dưới).
   saveBtn.disabled = false;
   // Đã sạch thì vẫn bấm được, chỉ là không có việc gì để làm. Ghi rõ trên nhãn thay
   // vì vô hiệu hoá nút: nút chết mà không nói lý do là kiểu tệ nhất.
   indexBtn.textContent = idea.indexed ? 'Index lại ý tưởng này' : 'Index ý tưởng này';
 
-  // Chi tiết nguồn gốc nằm ở khối riêng bên dưới, nên câu ở đây chỉ cần báo LOẠI.
+  // Chi tiết nguồn gốc nằm ở khối riêng ngay trên form, nên câu ở đây chỉ báo LOẠI.
   if (idea.source_idea_id) {
     $('#sub').textContent += ' Ý tưởng này được tạo bằng chức năng kết hợp.';
   }
@@ -159,198 +157,6 @@ async function loadSimilar() {
   } catch {
     // Gợi ý tương tự là phần thêm; hỏng thì im lặng bỏ qua.
   }
-}
-
-// --- Biến thể --------------------------------------------------------------
-
-// Biến thể nay có vector RIÊNG, nên có trạng thái index riêng. Cờ `indexed` do server
-// tính (routes/variants.ts) — giao diện không dựng lại phép so hash.
-function variantCard(v) {
-  return `<article class="card variant">
-    <h3>${esc(v.title)}</h3>
-    ${v.angle ? `<p class="hook">${esc(v.angle)}</p>` : ''}
-    <div class="meta">
-      <span class="chip">${v.script_outline.trim() ? 'dàn ý riêng' : 'dùng dàn ý gốc'}</span>
-      ${v.indexed ? '' : '<span class="chip pending" title="Chưa nằm trong tìm kiếm ngữ nghĩa">chưa index</span>'}
-      <button class="link" type="button" data-vindex="${esc(v.id)}">Index</button>
-      <button class="link" type="button" data-vedit="${esc(v.id)}">Sửa</button>
-      <button class="link" type="button" data-vdel="${esc(v.id)}">Xoá</button>
-    </div>
-  </article>`;
-}
-
-async function loadVariants() {
-  const data = await get(`/api/ideas/${encodeURIComponent(id)}/variants`);
-  variants = data.variants;
-  $('#variants').innerHTML = variants.length
-    ? variants.map(variantCard).join('')
-    : '<p class="empty">Chưa có biến thể nào. Thêm biến thể đầu tiên ở trên.</p>';
-
-  const sel = $('#pvariant');
-  const keep = sel.value;
-  sel.innerHTML = variants.map((v) => `<option value="${esc(v.id)}">${esc(v.title)}</option>`).join('');
-  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
-  // Không có biến thể thì không ghép được prompt — nói rõ thay vì để nút chết câm.
-  $('#pgen').disabled = variants.length === 0;
-  $('#psave').disabled = variants.length === 0;
-  show($('#pmsg'), variants.length ? '' : 'Thêm ít nhất một biến thể để kết hợp.',
-       variants.length ? 'ok' : 'note');
-}
-
-async function loadHooks() {
-  try {
-    const [{ hooks }, { categories }] = await Promise.all([
-      get('/api/hooks'),
-      get('/api/hook-categories'),
-    ]);
-    const nameOf = new Map(categories.map((c) => [c.id, c.name]));
-    const sel = $('#phook');
-    sel.innerHTML = '<option value="">— Không dùng hook —</option>'
-      + hooks.map((h) => {
-          const cat = nameOf.get(h.category_id) ?? 'Chưa phân loại';
-          const short = h.text.length > 60 ? `${h.text.slice(0, 60)}…` : h.text;
-          return `<option value="${esc(h.id)}">[${esc(cat)}] ${esc(short)}</option>`;
-        }).join('');
-  } catch (err) {
-    // Vẫn tạo được prompt không hook, nhưng phải NÓI ra. Nuốt lỗi ở đây từng khiến
-    // ô chọn hook rỗng mà không có dấu hiệu gì.
-    show($('#pmsg'), `Không tải được thư viện hook: ${err.message}`, 'note');
-  }
-}
-
-function resetVariantForm() {
-  editingVariant = null;
-  $('#vtitle').value = '';
-  $('#vangle').value = '';
-  $('#vscript').value = '';
-  $('#vsave').textContent = 'Thêm biến thể';
-  $('#vcancel').hidden = true;
-}
-
-if (!isNew) {
-  bindSubmit($('#vform'), $('#vsave'), async () => {
-    const body = {
-      title: $('#vtitle').value.trim(),
-      angle: $('#vangle').value.trim(),
-      script_outline: $('#vscript').value,
-    };
-    if (!body.title) {
-      show($('#vmsg'), 'Tên biến thể không được để trống.');
-      return;
-    }
-    try {
-      if (editingVariant) {
-        await patch(`/api/variants/${encodeURIComponent(editingVariant)}`, body);
-      } else {
-        await post(`/api/ideas/${encodeURIComponent(id)}/variants`, body);
-      }
-      resetVariantForm();
-      await loadVariants();
-      // Biến thể nằm trong văn bản đem đi nhúng, nên ý tưởng vừa trở lại "chưa đồng bộ".
-      show($('#vmsg'), 'Đã lưu. Bấm "Index" trên thẻ biến thể để nó vào tìm kiếm.', 'note');
-    } catch (err) {
-      show($('#vmsg'), err.message);
-    }
-  });
-
-  $('#vcancel').addEventListener('click', resetVariantForm);
-
-  $('#variants').addEventListener('click', async (e) => {
-    const editId = e.target?.dataset?.vedit;
-    const delId = e.target?.dataset?.vdel;
-    const indexId = e.target?.dataset?.vindex;
-    if (indexId) {
-      e.target.disabled = true;
-      e.target.textContent = '…';
-      try {
-        const res = await post(`/api/variants/${encodeURIComponent(indexId)}/index`);
-        await loadVariants();
-        show($('#vmsg'), res.indexed
-          ? 'Đã index biến thể. Tìm được sau khoảng một phút nữa.'
-          : 'Index chưa xong, thử lại sau.', res.indexed ? 'ok' : 'note');
-      } catch (err) {
-        show($('#vmsg'), err.message);
-        await loadVariants();
-      }
-      return;
-    }
-    if (editId) {
-      const v = variants.find((x) => x.id === editId);
-      if (!v) return;
-      editingVariant = v.id;
-      $('#vtitle').value = v.title;
-      $('#vangle').value = v.angle;
-      $('#vscript').value = v.script_outline;
-      $('#vsave').textContent = 'Lưu biến thể';
-      $('#vcancel').hidden = false;
-      $('#vtitle').focus();
-      return;
-    }
-    if (delId) {
-      if (!confirm('Xoá biến thể này?')) return;
-      try {
-        await del(`/api/variants/${encodeURIComponent(delId)}`);
-        resetVariantForm();
-        await loadVariants();
-      } catch (err) {
-        show($('#vmsg'), err.message);
-      }
-    }
-  });
-
-  // --- Sinh prompt ---------------------------------------------------------
-
-  $('#pgen').addEventListener('click', async () => {
-    const vid = $('#pvariant').value;
-    if (!vid) return;
-    const hid = $('#phook').value;
-    $('#pgen').disabled = true;
-    try {
-      const q = new URLSearchParams({ variant_id: vid });
-      if (hid) q.set('hook_id', hid);
-      const r = await get(`/api/prompt?${q.toString()}`);
-      $('#pout').textContent = r.prompt;
-      $('#pout').hidden = false;
-      $('#pcopy').hidden = false;
-      show($('#pmsg'), '');
-    } catch (err) {
-      show($('#pmsg'), err.message);
-    } finally {
-      $('#pgen').disabled = false;
-    }
-  });
-
-  $('#psave').addEventListener('click', async () => {
-    const vid = $('#pvariant').value;
-    if (!vid) return;
-    const hid = $('#phook').value;
-    $('#psave').disabled = true;
-    $('#psave').textContent = 'Đang lưu…';
-    try {
-      const res = await post('/api/ideas/combine', {
-        idea_id: id,
-        variant_id: vid,
-        hook_id: hid || null,
-      });
-      // Đi thẳng sang ý tưởng vừa tạo: nó là một ý tưởng gốc đầy đủ, và việc kế tiếp
-      // gần như luôn là bấm Index cho nó.
-      location.assign(`/idea?id=${encodeURIComponent(res.idea.id)}&created=1`);
-    } catch (err) {
-      show($('#pmsg'), err.message);
-      $('#psave').disabled = false;
-      $('#psave').textContent = 'Lưu thành ý tưởng gốc';
-    }
-  });
-
-  $('#pcopy').addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText($('#pout').textContent);
-      show($('#pmsg'), 'Đã chép prompt vào clipboard.', 'ok');
-    } catch {
-      // clipboard cần ngữ cảnh bảo mật và quyền; hỏng thì bảo người dùng tự bôi đen.
-      show($('#pmsg'), 'Trình duyệt không cho chép tự động — hãy bôi đen và chép tay.', 'note');
-    }
-  });
 }
 
 // enable chỉ khi là ý tưởng mới: ý tưởng đã có thì nút Lưu mở trong fill(), tức là sau
@@ -445,9 +251,9 @@ delBtn.addEventListener('click', async () => {
 // Enter trong một ô văn bản) trong khoảng chờ đó thì trình duyệt submit form theo kiểu
 // HTML thuần: điều hướng GET về chính trang này với query dựng từ các ô nhập. Không ô
 // nào có thuộc tính `name`, nên query ra RỖNG — `?id=…` biến mất, `isNew` thành true,
-// và trang nạp lại thành "Ý tưởng mới": chỉ còn form ý tưởng gốc, mất cả khối biến thể
-// lẫn khối kết hợp, không một thông báo lỗi nào. Trên máy local lời gọi xong trong vài
-// chục mili giây nên gần như không bao giờ dính; trên production thì cửa sổ đó đủ rộng.
+// và trang nạp lại thành "Ý tưởng mới": form trắng, mất tiêu đề, mất khối nguồn gốc,
+// không một thông báo lỗi nào. Trên máy local lời gọi xong trong vài chục mili giây
+// nên gần như không bao giờ dính; trên production thì cửa sổ đó đủ rộng.
 //
 // Gắn trình xử lý trước rồi mới `await` là cách đóng cửa sổ đó. Nút Lưu để `disabled`
 // sẵn trong HTML và chỉ được mở khi trình xử lý đã gắn là lớp chắn thứ hai, cho khoảng
@@ -466,18 +272,8 @@ if (!isNew) {
     if (new URLSearchParams(location.search).get('created') === '1') {
       show(msg, CREATED_MSG, 'ok');
     }
-    $('#variants-wrap').hidden = false;
-    $('#prompt-wrap').hidden = false;
-
-    // Ba lời gọi này độc lập nhau, nên KHÔNG xâu chuỗi bằng await liên tiếp: trước đây
-    // hook không tải được chỉ vì biến thể lỗi trước nó. Chạy song song, mỗi cái tự báo
-    // lỗi vào đúng chỗ của mình.
-    loadVariants().catch((e) => show($('#vmsg'), e.message));
-    loadHooks();
     void loadSimilar();
   } catch (err) {
-    // Không đọc được chính ý tưởng thì hai khối dưới cũng vô nghĩa — để nguyên trạng
-    // thái ẩn và nói lỗi ra, thay vì đi tải biến thể cho một trang không dùng được.
     show(msg, err.message);
   }
 }

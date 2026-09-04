@@ -141,7 +141,8 @@ quyết định đáng nhớ, cả hai đều để tránh làm bẩn dây chuy�
 **Ba kho, ba trang, mỗi kho quản lý độc lập.** `/app` cho ý tưởng gốc, `/variants` cho biến
 thể, `/hooks` cho hook — mỗi trang **thêm, sửa, xoá và index** được ngay tại chỗ, không phải
 nhảy sang trang khác. Biến thể vẫn *thuộc về* một ý tưởng gốc, nên lúc tạo phải chọn ý tưởng
-cha; trang ý tưởng cũng vẫn thêm sửa biến thể được như trước, hai đường dẫn tới cùng một API.
+cha. Trang `/idea` cố ý CHỈ sửa ý tưởng gốc — nó có liên kết "Biến thể của ý tưởng này"
+sang `/variants?idea=…` chứ không dựng lại một khối quản lý biến thể thứ hai.
 
 **Ô chọn ý tưởng cha dùng `GET /api/ideas/titles`, không phải `GET /api/ideas`.** Cái sau
 phân trang tối đa 50 nên một ô chọn dựng từ nó sẽ âm thầm thiếu ý tưởng, và người dùng không
@@ -386,16 +387,18 @@ lúc kết hợp nên vắng mặt chỉ có thể là "đã bị xoá" và giao
 tuỳ chọn, nên `source_hook_id` NULL là "không dùng hook" và không nêu gì cả — gộp hai
 trường hợp lại thành một câu là nói dối ở đúng lúc người dùng cần biết.
 
-**Có hai lối vào cùng một endpoint.** Khối kết hợp nằm ở cả trang một ý tưởng
-(`/idea`, ý tưởng gốc là trang đang mở) lẫn trang gợi ý (`/recommend`, chọn ý tưởng từ
-toàn kho qua `/api/ideas/titles`). Trang gợi ý là nơi bạn vừa nhìn thấy một ý tưởng cũ
-đáng làm lại, nên ghép được ngay tại đó; tạo xong thì **ở lại trang** kèm liên kết tới ý
-tưởng mới, để ghép tiếp từ cùng danh sách mà không mất chỗ đang đọc.
+**Khối kết hợp chỉ nằm ở trang gợi ý** (`/recommend`, chọn ý tưởng từ toàn kho qua
+`/api/ideas/titles`). Đó là nơi bạn vừa nhìn thấy một ý tưởng cũ đáng làm lại, nên ghép
+được ngay tại đó; tạo xong thì **ở lại trang** kèm liên kết tới ý tưởng mới, để ghép tiếp
+từ cùng danh sách mà không mất chỗ đang đọc.
 
-Cả hai nơi đều nạp lại ô biến thể khi đổi ý tưởng: biến thể thuộc về một ý tưởng, và
-`src/combine.ts` từ chối cặp không khớp bằng `variant_mismatch` — chặn ở giao diện thì
-người dùng không bao giờ phải gặp lỗi 400 đó. Ý tưởng chưa có biến thể nào thì hai nút bị
-vô hiệu hoá **kèm lý do**, không để nút chết câm.
+Trang `/idea` từng có một khối kết hợp thứ hai và đã bỏ: nó chỉ ghép được từ đúng ý tưởng
+đang mở, nên làm trang dài ra mà vẫn phải sang `/recommend` khi muốn chọn ý tưởng khác.
+
+Ô biến thể nạp lại mỗi khi đổi ý tưởng: biến thể thuộc về một ý tưởng, và `src/combine.ts`
+từ chối cặp không khớp bằng `variant_mismatch` — chặn ở giao diện thì người dùng không bao
+giờ phải gặp lỗi 400 đó. Ý tưởng chưa có biến thể nào thì hai nút bị vô hiệu hoá **kèm lý
+do**, không để nút chết câm.
 
 **POST chứ không GET** vì nó ghi dữ liệu — `SameSite=Lax` vẫn gửi cookie theo điều hướng
 GET ở cấp cao nhất, nên quy tắc "không endpoint GET nào được thay đổi dữ liệu"

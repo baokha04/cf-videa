@@ -27,10 +27,11 @@ export function $(sel, root = document) {
  * Không có nó thì có một khoảng trống thật: form nằm sẵn trong HTML tĩnh nên hiện ra
  * và bấm được ngay, còn trình xử lý thì phải chờ module tải và chạy xong. Bấm trong
  * khoảng đó, trình duyệt submit form theo kiểu HTML thuần — điều hướng GET về chính
- * trang này với query dựng từ các ô nhập. Không ô nào trong dự án có thuộc tính `name`,
- * nên query ra RỖNG và mọi tham số trên URL bay sạch. Ở /idea nó làm mất `?id=`, trang
- * nạp lại thành "Ý tưởng mới" và mất luôn khối biến thể lẫn khối kết hợp — không một
- * thông báo nào. Ở /variants là mất `?idea=`, ở /search là mất `?q=`.
+ * trang này với query dựng từ các ô nhập. Ở các trang trong app không ô nào có thuộc
+ * tính `name`, nên query ra RỖNG và mọi tham số trên URL bay sạch: /idea mất `?id=` rồi
+ * nạp lại thành "Ý tưởng mới" — mất tiêu đề, mất khối nguồn gốc, không một thông báo
+ * nào; /variants mất `?idea=`; /search mất `?q=`. Ở login/register thì ngược lại, ô
+ * nhập CÓ `name`, nên query không rỗng mà mang thẳng mật khẩu lên URL.
  *
  * `enable: false` dành cho form phải chờ dữ liệu về rồi mới cho gửi: ở /idea, bấm Lưu
  * trên form còn rỗng sẽ ghi đè ý tưởng bằng đúng cái rỗng đó.
