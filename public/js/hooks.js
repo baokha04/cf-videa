@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, esc, show } from './ui.js';
+import { $, bindSubmit, esc, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 const catsEl = $('#cats');
@@ -61,8 +61,7 @@ async function loadHooks() {
     : '<p class="empty">Chưa có hook nào. Thêm hook đầu tiên ở trên.</p>';
 }
 
-$('#catform').addEventListener('submit', async (e) => {
-  e.preventDefault();
+bindSubmit($('#catform'), $('#catsave'), async () => {
   const name = $('#catname').value.trim();
   if (!name) return;
   try {
@@ -96,8 +95,7 @@ function resetForm() {
   fillSelects();
 }
 
-$('#hookform').addEventListener('submit', async (e) => {
-  e.preventDefault();
+bindSubmit($('#hookform'), $('#hsave'), async () => {
   const body = {
     text: $('#htext').value.trim(),
     note: $('#hnote').value.trim(),

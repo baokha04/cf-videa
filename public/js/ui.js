@@ -18,6 +18,31 @@ export function $(sel, root = document) {
   return root.querySelector(sel);
 }
 
+/**
+ * Gắn trình xử lý `submit` cho một form, rồi MỞ KHOÁ nút gửi của nó.
+ *
+ * Bất biến duy nhất mà hàm này giữ: nút bấm được ⇔ đã có trình xử lý. Nút gửi để
+ * `disabled` sẵn trong HTML và chỉ được mở ở đây.
+ *
+ * Không có nó thì có một khoảng trống thật: form nằm sẵn trong HTML tĩnh nên hiện ra
+ * và bấm được ngay, còn trình xử lý thì phải chờ module tải và chạy xong. Bấm trong
+ * khoảng đó, trình duyệt submit form theo kiểu HTML thuần — điều hướng GET về chính
+ * trang này với query dựng từ các ô nhập. Không ô nào trong dự án có thuộc tính `name`,
+ * nên query ra RỖNG và mọi tham số trên URL bay sạch. Ở /idea nó làm mất `?id=`, trang
+ * nạp lại thành "Ý tưởng mới" và mất luôn khối biến thể lẫn khối kết hợp — không một
+ * thông báo nào. Ở /variants là mất `?idea=`, ở /search là mất `?q=`.
+ *
+ * `enable: false` dành cho form phải chờ dữ liệu về rồi mới cho gửi: ở /idea, bấm Lưu
+ * trên form còn rỗng sẽ ghi đè ý tưởng bằng đúng cái rỗng đó.
+ */
+export function bindSubmit(form, button, handler, { enable = true } = {}) {
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    handler(e);
+  });
+  if (enable) button.disabled = false;
+}
+
 export function show(el, text, kind = 'error') {
   if (!el) return;
   el.className = `msg ${kind}`;

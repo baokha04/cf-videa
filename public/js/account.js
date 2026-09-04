@@ -1,5 +1,5 @@
 import { del, get, post, put } from './api.js';
-import { $, esc, show } from './ui.js';
+import { $, bindSubmit, esc, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 function fmtWhen(ms) {
@@ -108,8 +108,7 @@ $('#tplreset').addEventListener('click', async () => {
   }
 });
 
-$('#pw').addEventListener('submit', async (e) => {
-  e.preventDefault();
+bindSubmit($('#pw'), $('#pwsave'), async () => {
   const btn = $('#pwsave');
   show($('#pwmsg'), '');
   btn.disabled = true;

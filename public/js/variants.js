@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, esc, show } from './ui.js';
+import { $, bindSubmit, esc, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 const listEl = $('#list');
@@ -118,8 +118,7 @@ async function load(append = false) {
   }
 }
 
-$('#vform').addEventListener('submit', async (e) => {
-  e.preventDefault();
+bindSubmit($('#vform'), $('#vsave'), async () => {
   const body = {
     title: $('#vtitle').value.trim(),
     angle: $('#vangle').value.trim(),
@@ -162,8 +161,7 @@ $('#vcancel').addEventListener('click', () => {
   show(vmsg, '');
 });
 
-$('#filters').addEventListener('submit', (e) => {
-  e.preventDefault();
+bindSubmit($('#filters'), $('#vfilter-go'), () => {
   cursor = null;
   load(false);
 });

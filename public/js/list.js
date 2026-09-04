@@ -1,5 +1,5 @@
 import { get } from './api.js';
-import { $, bindIndexButtons, renderList, show } from './ui.js';
+import { $, bindIndexButtons, bindSubmit, renderList, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 const listEl = $('#list');
@@ -49,8 +49,7 @@ async function loadTags() {
   }
 }
 
-$('#filters').addEventListener('submit', (e) => {
-  e.preventDefault();
+bindSubmit($('#filters'), $('#filter-go'), () => {
   cursor = null;
   load(false);
 });

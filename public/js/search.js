@@ -1,5 +1,5 @@
 import { get } from './api.js';
-import { $, bindIndexButtons, renderList, show } from './ui.js';
+import { $, bindIndexButtons, bindSubmit, renderList, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 const listEl = $('#list');
@@ -42,8 +42,7 @@ async function run(q) {
 // index — nút Index trên thẻ vì thế vẫn có việc để làm.
 bindIndexButtons(listEl, { onMessage: (text, kind) => show(msg, text, kind) });
 
-$('#f').addEventListener('submit', (e) => {
-  e.preventDefault();
+bindSubmit($('#f'), go, () => {
   const q = $('#q').value.trim();
   if (q) void run(q);
 });

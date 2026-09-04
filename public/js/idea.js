@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, bindIndexButtons, esc, renderList, show } from './ui.js';
+import { $, bindIndexButtons, bindSubmit, esc, renderList, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 // Ba thông báo, gom lại một chỗ để chúng không lệch nhau khi sửa.
@@ -228,8 +228,7 @@ function resetVariantForm() {
 }
 
 if (!isNew) {
-  $('#vform').addEventListener('submit', async (e) => {
-    e.preventDefault();
+  bindSubmit($('#vform'), $('#vsave'), async () => {
     const body = {
       title: $('#vtitle').value.trim(),
       angle: $('#vangle').value.trim(),
@@ -254,7 +253,6 @@ if (!isNew) {
     }
   });
 
-  $('#vsave').disabled = false;
   $('#vcancel').addEventListener('click', resetVariantForm);
 
   $('#variants').addEventListener('click', async (e) => {
@@ -355,14 +353,10 @@ if (!isNew) {
   });
 }
 
-// Ý tưởng mới thì không có gì phải chờ nạp — mở khoá nút Lưu ngay. Ý tưởng đã có thì
-// nút chỉ mở trong fill(), tức là sau khi form đã mang dữ liệu THẬT: bấm Lưu trên một
-// form còn rỗng sẽ ghi đè ý tưởng bằng đúng cái rỗng đó. Nạp hỏng thì nút ở lại khoá,
-// và thông báo lỗi nói vì sao — an toàn hơn hẳn một nút bấm được nhưng phá dữ liệu.
-if (isNew) saveBtn.disabled = false;
-
-$('#f').addEventListener('submit', async (e) => {
-  e.preventDefault();
+// enable chỉ khi là ý tưởng mới: ý tưởng đã có thì nút Lưu mở trong fill(), tức là sau
+// khi form đã mang dữ liệu THẬT. Bấm Lưu trên một form còn rỗng sẽ ghi đè ý tưởng bằng
+// đúng cái rỗng đó; nạp hỏng thì nút ở lại khoá và thông báo lỗi nói vì sao.
+bindSubmit($('#f'), saveBtn, async () => {
   show(msg, '');
   const body = readForm();
   if (!body.title) {
@@ -389,7 +383,7 @@ $('#f').addEventListener('submit', async (e) => {
     saveBtn.disabled = false;
     saveBtn.textContent = 'Lưu';
   }
-});
+}, { enable: isNew });
 
 if (!isNew) {
   indexBtn.addEventListener('click', async () => {
