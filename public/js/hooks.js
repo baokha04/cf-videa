@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, bindSubmit, esc, show } from './ui.js';
+import { $, bindSubmit, btnOf, esc, iconMarkup, setIcon, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 const catsEl = $('#cats');
@@ -45,9 +45,12 @@ function hookCard(h) {
       <span class="chip">${esc(cat ? cat.name : 'Chưa phân loại')}</span>
       ${h.note ? `<span class="chip">${esc(h.note)}</span>` : ''}
       ${h.indexed ? '' : '<span class="chip pending" title="Chưa nằm trong tìm kiếm ngữ nghĩa">chưa index</span>'}
-      <button class="link" type="button" data-index="${esc(h.id)}">Index</button>
-      <button class="link" type="button" data-edit="${esc(h.id)}">Sửa</button>
-      <button class="link" type="button" data-del="${esc(h.id)}">Xoá</button>
+      <button class="link" type="button" data-index="${esc(h.id)}"
+              aria-label="Index hook này" title="Index hook này">${iconMarkup('index')}</button>
+      <button class="link" type="button" data-edit="${esc(h.id)}"
+              aria-label="Sửa hook" title="Sửa hook">${iconMarkup('edit')}</button>
+      <button class="link" type="button" data-del="${esc(h.id)}"
+              aria-label="Xoá hook" title="Xoá hook">${iconMarkup('trash')}</button>
     </div>
   </article>`;
 }
@@ -75,7 +78,7 @@ bindSubmit($('#catform'), $('#catsave'), async () => {
 });
 
 catsEl.addEventListener('click', async (e) => {
-  const id = e.target?.dataset?.delcat;
+  const id = btnOf(e)?.dataset?.delcat;
   if (!id) return;
   if (!confirm('Xoá danh mục này? Hook bên trong được giữ lại và chuyển về "Chưa phân loại".')) return;
   try {
@@ -90,7 +93,7 @@ catsEl.addEventListener('click', async (e) => {
 function resetForm() {
   editingId = null;
   $('#hookform').reset();
-  $('#hsave').textContent = 'Thêm hook';
+  setIcon($('#hsave'), 'plus', 'Thêm hook');
   $('#hcancel').hidden = true;
   fillSelects();
 }
@@ -117,12 +120,13 @@ bindSubmit($('#hookform'), $('#hsave'), async () => {
 $('#hcancel').addEventListener('click', resetForm);
 
 listEl.addEventListener('click', async (e) => {
-  const editId = e.target?.dataset?.edit;
-  const delId = e.target?.dataset?.del;
-  const indexId = e.target?.dataset?.index;
+  const btn = btnOf(e);
+  const editId = btn?.dataset?.edit;
+  const delId = btn?.dataset?.del;
+  const indexId = btn?.dataset?.index;
   if (indexId) {
-    e.target.disabled = true;
-    e.target.textContent = '…';
+    btn.disabled = true;
+    setIcon(btn, 'busy', 'Đang index…');
     try {
       const r = await post(`/api/hooks/${encodeURIComponent(indexId)}/index`);
       show($('#hookmsg'), r.indexed
@@ -142,7 +146,7 @@ listEl.addEventListener('click', async (e) => {
     $('#htext').value = h.text;
     $('#hnote').value = h.note;
     $('#hcat').value = h.category_id ?? '';
-    $('#hsave').textContent = 'Lưu thay đổi';
+    setIcon($('#hsave'), 'save', 'Lưu thay đổi');
     $('#hcancel').hidden = false;
     $('#htext').focus();
     return;

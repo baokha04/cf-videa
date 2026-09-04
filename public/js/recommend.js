@@ -1,5 +1,5 @@
 import { get, post } from './api.js';
-import { $, bindIndexButtons, esc, renderList, show } from './ui.js';
+import { $, bindIndexButtons, esc, renderList, setIcon, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 const msg = $('#msg');
@@ -126,7 +126,7 @@ $('#csave').addEventListener('click', async () => {
   const vid = cvariant.value;
   if (!ideaId || !vid) return;
   $('#csave').disabled = true;
-  $('#csave').textContent = 'Đang tạo…';
+  setIcon($('#csave'), 'busy', 'Đang tạo…');
   try {
     const r = await post('/api/ideas/combine', {
       idea_id: ideaId,
@@ -146,7 +146,7 @@ $('#csave').addEventListener('click', async () => {
     show(cmsg, err.message);
   } finally {
     $('#csave').disabled = false;
-    $('#csave').textContent = 'Tạo ý tưởng mới';
+    setIcon($('#csave'), 'plus', 'Tạo ý tưởng mới');
   }
 });
 

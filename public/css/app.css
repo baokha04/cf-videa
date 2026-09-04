@@ -157,7 +157,6 @@ header.site .who {
   padding: 0;
   display: grid;
   place-items: center;
-  font-size: 18px;
   line-height: 1;
   border-radius: 50%;
   border: 1px solid var(--border);
@@ -241,6 +240,40 @@ button {
   touch-action: manipulation;
 }
 button:disabled { opacity: .5; cursor: default; }
+
+/* --- Nút chỉ có icon ------------------------------------------------------ */
+/* Nút bỏ hết chữ, nên hai thứ phải giữ bằng được:
+   1. Vùng bấm không được co lại theo icon — vẫn đủ --tap ở cả hai chiều, nếu không
+      trên điện thoại nó thành cái đích 18px không ai bấm trúng.
+   2. Nhãn nằm ở aria-label + title của nút (xem setIcon trong js/ui.js). Không có
+      chúng thì nút là ô vuông câm với trình đọc màn hình. */
+button > .ico {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  display: block;
+}
+button:has(> .ico) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--tap);
+  padding: 10px;
+}
+button.link:has(> .ico) { min-width: 0; min-height: 0; padding: 4px 6px; }
+/* Tim rỗng = chưa thích, tim đặc = đã thích. Không còn chữ "Thích/Bỏ thích" nên trạng
+   thái phải đọc được từ chính hình. */
+button.liked > .ico { fill: currentColor; }
+button.liked { color: var(--danger); }
+button.link > .ico { width: 17px; height: 17px; }
+/* Nút "đang chạy": cùng một icon quay tròn, không đổi kích thước nút. */
+button:disabled > .ico[data-busy] { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { button:disabled > .ico[data-busy] { animation: none; } }
 button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
 button.danger { color: var(--danger); }
 button.link {

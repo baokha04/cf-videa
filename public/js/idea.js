@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, bindIndexButtons, bindSubmit, esc, renderList, show } from './ui.js';
+import { $, bindIndexButtons, bindSubmit, esc, renderList, setIcon, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 // Ba thông báo, gom lại một chỗ để chúng không lệch nhau khi sửa.
@@ -47,7 +47,8 @@ function fill(idea) {
   $('#niche').value = idea.niche;
   $('#tags').value = idea.tags.join(', ');
   liked = idea.liked;
-  likeBtn.textContent = liked ? '♥ Bỏ thích' : '♡ Thích';
+  setIcon(likeBtn, 'heart', liked ? 'Bỏ thích' : 'Thích');
+  likeBtn.classList.toggle('liked', liked);
   likeBtn.hidden = false;
   delBtn.hidden = false;
   $('#heading').textContent = idea.title;
@@ -63,7 +64,8 @@ function fill(idea) {
   saveBtn.disabled = false;
   // Đã sạch thì vẫn bấm được, chỉ là không có việc gì để làm. Ghi rõ trên nhãn thay
   // vì vô hiệu hoá nút: nút chết mà không nói lý do là kiểu tệ nhất.
-  indexBtn.textContent = idea.indexed ? 'Index lại ý tưởng này' : 'Index ý tưởng này';
+  setIcon(indexBtn, 'index',
+    idea.indexed ? 'Index lại ý tưởng này' : 'Index ý tưởng này');
 
   if (idea.source_idea_id) {
     $('#sub').textContent += ' Ý tưởng này được tạo bằng chức năng kết hợp.';
@@ -115,7 +117,7 @@ bindSubmit($('#f'), saveBtn, async () => {
     return;
   }
   saveBtn.disabled = true;
-  saveBtn.textContent = 'Đang lưu…';
+  setIcon(saveBtn, 'busy', 'Đang lưu…');
   try {
     const res = isNew
       ? await post('/api/ideas', body)
@@ -132,15 +134,15 @@ bindSubmit($('#f'), saveBtn, async () => {
     show(msg, err.message);
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = 'Lưu';
+    setIcon(saveBtn, 'save', 'Lưu');
   }
 }, { enable: isNew });
 
 if (!isNew) {
   indexBtn.addEventListener('click', async () => {
     indexBtn.disabled = true;
-    const label = indexBtn.textContent;
-    indexBtn.textContent = 'Đang index…';
+    const label = indexBtn.title;
+    setIcon(indexBtn, 'busy', 'Đang index…');
     showDuplicates([]);
     try {
       const res = await post(`/api/ideas/${encodeURIComponent(id)}/index`);
@@ -152,7 +154,7 @@ if (!isNew) {
         res.indexed ? 'ok' : 'note');
     } catch (err) {
       show(msg, err.message);
-      indexBtn.textContent = label;
+      setIcon(indexBtn, 'index', label);
     } finally {
       indexBtn.disabled = false;
     }
@@ -166,7 +168,8 @@ likeBtn.addEventListener('click', async () => {
     if (liked) await del(path);
     else await post(path);
     liked = !liked;
-    likeBtn.textContent = liked ? '♥ Bỏ thích' : '♡ Thích';
+    setIcon(likeBtn, 'heart', liked ? 'Bỏ thích' : 'Thích');
+    likeBtn.classList.toggle('liked', liked);
   } catch (err) {
     show(msg, err.message);
   } finally {

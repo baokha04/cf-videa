@@ -1,5 +1,5 @@
 import { del, get, post } from './api.js';
-import { $, bindSubmit, esc, show } from './ui.js';
+import { $, bindSubmit, btnOf, esc, iconMarkup, setIcon, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 function fmtWhen(ms) {
@@ -38,7 +38,8 @@ async function loadSessions() {
           <td>${
             s.current
               ? ''
-              : `<button class="link" type="button" data-revoke="${esc(s.id)}">Thu hồi</button>`
+              : `<button class="link" type="button" data-revoke="${esc(s.id)}"
+                     aria-label="Thu hồi phiên này" title="Thu hồi phiên này">${iconMarkup('revoke')}</button>`
           }</td>
         </tr>`,
       )
@@ -51,9 +52,9 @@ async function loadSessions() {
 // Uỷ quyền sự kiện: CSP chặn onclick nội tuyến, và cách này sống sót qua mỗi lần
 // render lại bảng.
 $('#sessions').addEventListener('click', async (e) => {
-  const id = e.target?.dataset?.revoke;
+  const id = btnOf(e)?.dataset?.revoke;
   if (!id) return;
-  e.target.disabled = true;
+  btnOf(e).disabled = true;
   try {
     await del(`/api/auth/sessions/${encodeURIComponent(id)}`);
     await loadSessions();
@@ -66,7 +67,7 @@ bindSubmit($('#pw'), $('#pwsave'), async () => {
   const btn = $('#pwsave');
   show($('#pwmsg'), '');
   btn.disabled = true;
-  btn.textContent = 'Đang đổi…';
+  setIcon(btn, 'busy', 'Đang đổi…');
   try {
     const res = await post('/api/auth/change-password', {
       current_password: $('#current_password').value,
@@ -83,7 +84,7 @@ bindSubmit($('#pw'), $('#pwsave'), async () => {
     show($('#pwmsg'), err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Đổi mật khẩu';
+    setIcon(btn, 'key', 'Đổi mật khẩu');
   }
 });
 

@@ -1,5 +1,5 @@
 import { post } from './api.js';
-import { $, bindSubmit, show } from './ui.js';
+import { $, bindSubmit, setIcon, show } from './ui.js';
 import { mountThemeToggle } from './theme.js';
 
 // Một file phục vụ cả login.html lẫn register.html — hai form giống nhau tới mức
@@ -31,7 +31,7 @@ function nextUrl() {
 bindSubmit(form, submit, async () => {
   show(msg, '');
   submit.disabled = true;
-  submit.textContent = isRegister ? 'Đang tạo…' : 'Đang đăng nhập…';
+  setIcon(submit, 'busy', isRegister ? 'Đang tạo…' : 'Đang đăng nhập…');
 
   const body = {
     email: $('#email').value.trim(),
@@ -51,6 +51,6 @@ bindSubmit(form, submit, async () => {
   } catch (err) {
     show(msg, err.message || 'Không thực hiện được.');
     submit.disabled = false;
-    submit.textContent = isRegister ? 'Đăng ký' : 'Đăng nhập';
+    setIcon(submit, isRegister ? 'signup' : 'login', isRegister ? 'Đăng ký' : 'Đăng nhập');
   }
 });

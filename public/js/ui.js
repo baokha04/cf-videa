@@ -5,6 +5,78 @@
 // api.js KHÔNG import ngược lại ui.js, nên chiều phụ thuộc này không tạo vòng lặp.
 import { post } from './api.js';
 
+/**
+ * Bộ icon inline.
+ *
+ * SVG viết thẳng vào HTML chứ không phải font icon hay ảnh: CSP trong public/_headers
+ * chỉ cho tài nguyên CÙNG GỐC (`default-src 'self'`, `img-src 'self' data:`), nên mọi
+ * bộ icon tải từ CDN đều bị chặn câm. `stroke: currentColor` để icon tự đổi màu theo
+ * nút chứa nó — nút primary, nút danger và chế độ tối dùng chung một đường vẽ.
+ *
+ * Đường vẽ theo phong cách Feather (24×24, nét 2, không tô).
+ */
+const ICONS = {
+  save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>',
+  filter: '<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>',
+  trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>',
+  edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
+  index: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+  check: '<path d="M20 6L9 17l-5-5"/>',
+  heart: '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',
+  x: '<path d="M18 6L6 18M6 6l12 12"/>',
+  down: '<path d="M6 9l6 6 6-6"/>',
+  back: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+  layers: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>',
+  login: '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5M15 12H3"/>',
+  signup: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/>',
+  key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  devices: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  revoke: '<circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14"/>',
+  busy: '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>',
+  // Ba trạng thái của nút đổi giao diện: theo hệ thống / sáng / tối.
+  auto: '<circle cx="12" cy="12" r="9"/><path d="M12 3v18" fill="currentColor" stroke="none"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+};
+
+/** SVG của một icon. `aria-hidden` vì nhãn nằm ở aria-label của nút, không phải ở đây. */
+export function iconMarkup(name) {
+  // data-busy để CSS cho riêng icon "đang chạy" quay tròn.
+  const busy = name === 'busy' ? ' data-busy' : '';
+  return `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"${busy}>${ICONS[name] ?? ICONS.x}</svg>`;
+}
+
+/**
+ * Nút thật sự bị bấm trong một trình xử lý uỷ quyền.
+ *
+ * BẮT BUỘC dùng thay cho `e.target` từ khi nút chỉ còn icon: cú bấm rơi vào chính
+ * `<svg>` (hay `<path>`) bên trong nút, nên `e.target.dataset` RỖNG và mọi handler
+ * uỷ quyền im lặng không làm gì — không lỗi, không dấu hiệu. Đã dính đúng lỗi này khi
+ * đổi sang icon: Sửa / Xoá / Index / Thu hồi đều thành nút chết câm.
+ */
+export function btnOf(e) {
+  return e.target?.closest?.('button') ?? null;
+}
+
+/**
+ * Đặt icon + nhãn cho một nút CHỈ CÓ ICON.
+ *
+ * `label` là bắt buộc và đi vào cả `aria-label` lẫn `title`: nút không còn chữ, nên
+ * thiếu nhãn là nó thành ô vuông câm — người dùng trình đọc màn hình không biết nó làm
+ * gì, người nhìn thấy cũng phải đoán. Dùng hàm này thay cho `btn.textContent = …`, vì
+ * gán textContent sẽ xoá luôn SVG bên trong.
+ */
+export function setIcon(btn, name, label) {
+  if (!btn) return;
+  btn.innerHTML = iconMarkup(name);
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+}
+
 export function esc(v) {
   return String(v ?? '')
     .replaceAll('&', '&amp;')
@@ -111,7 +183,8 @@ export function ideaCard(idea) {
       <span class="chip">${esc(statusLabel(idea.status))}</span>
       ${idea.niche ? `<span class="chip">${esc(idea.niche)}</span>` : ''}
       ${variants}${tags}${liked}${score}${combined}${pending}
-      <button class="link" type="button" data-index="${esc(idea.id)}">Index</button>
+      <button class="link" type="button" data-index="${esc(idea.id)}"
+              aria-label="Index ý tưởng này" title="Index ý tưởng này">${iconMarkup('index')}</button>
     </div>
   </article>`;
 }
@@ -129,14 +202,15 @@ export function ideaCard(idea) {
  */
 export function bindIndexButtons(container, { onMessage } = {}) {
   container.addEventListener('click', async (e) => {
-    const btn = e.target;
+    const btn = btnOf(e);
     const id = btn?.dataset?.index;
     if (!id) return;
 
     const card = btn.closest('.card');
     btn.disabled = true;
-    const label = btn.textContent;
-    btn.textContent = '…';
+    // Nút chỉ có icon: phải đổi qua setIcon, gán textContent sẽ xoá mất SVG bên trong.
+    const label = btn.title;
+    setIcon(btn, 'busy', 'Đang index…');
     try {
       const r = await post(`/api/ideas/${encodeURIComponent(id)}/index`);
       if (r.duplicates?.length) {
@@ -150,14 +224,14 @@ export function bindIndexButtons(container, { onMessage } = {}) {
 
       if (r.indexed) {
         card?.querySelector('.chip.pending')?.remove();
-        btn.textContent = 'Đã index';
+        setIcon(btn, 'check', 'Đã index');
       } else {
-        btn.textContent = label;
+        setIcon(btn, 'index', label);
         btn.disabled = false;
       }
     } catch (err) {
       onMessage?.(err.message);
-      btn.textContent = label;
+      setIcon(btn, 'index', label);
       btn.disabled = false;
     }
   });

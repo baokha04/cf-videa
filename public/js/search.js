@@ -1,5 +1,5 @@
 import { get } from './api.js';
-import { $, bindIndexButtons, bindSubmit, renderList, show } from './ui.js';
+import { $, bindIndexButtons, bindSubmit, renderList, setIcon, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 const listEl = $('#list');
@@ -9,7 +9,7 @@ const go = $('#go');
 async function run(q) {
   show(msg, '');
   go.disabled = true;
-  go.textContent = 'Đang tìm…';
+  setIcon(go, 'busy', 'Đang tìm…');
   try {
     const data = await get(`/api/search?q=${encodeURIComponent(q)}&limit=20`);
     // Server lùi về tìm từ khoá khi Vectorize hoặc Workers AI không dùng được.
@@ -34,7 +34,7 @@ async function run(q) {
     show(msg, err.message);
   } finally {
     go.disabled = false;
-    go.textContent = 'Tìm';
+    setIcon(go, 'search', 'Tìm');
   }
 }
 

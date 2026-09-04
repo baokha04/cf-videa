@@ -5,13 +5,15 @@
 // sẽ mất tính năng đó.
 //
 // Khoá localStorage phải trùng với public/js/theme-init.js.
+import { iconMarkup } from './ui.js';
+
 const KEY = 'videa-theme';
 const ORDER = ['auto', 'light', 'dark'];
 
 const LABEL = {
-  auto: { icon: '◐', text: 'Theo hệ thống' },
-  light: { icon: '☀', text: 'Giao diện sáng' },
-  dark: { icon: '☾', text: 'Giao diện tối' },
+  auto: { icon: 'auto', text: 'Theo hệ thống' },
+  light: { icon: 'sun', text: 'Giao diện sáng' },
+  dark: { icon: 'moon', text: 'Giao diện tối' },
 };
 
 function read() {
@@ -43,7 +45,7 @@ export function mountThemeToggle(container) {
   const render = () => {
     const t = read();
     const { icon, text } = LABEL[t];
-    btn.innerHTML = `<span aria-hidden="true">${icon}</span>`;
+    btn.innerHTML = iconMarkup(icon);
     // Nút chỉ có biểu tượng nên phải có nhãn cho trình đọc màn hình.
     btn.setAttribute('aria-label', `${text}. Bấm để đổi.`);
     btn.title = text;
