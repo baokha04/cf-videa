@@ -73,12 +73,13 @@
         <!-- disabled sẵn; JS mở khoá khi form đã mang dữ liệu thật (ý tưởng mới thì
              mở ngay). Không có lớp này thì một cú bấm trong lúc trang còn nạp sẽ
              submit form kiểu HTML thuần: không ô nào có `name` nên query ra rỗng,
-             `?id=…` bay mất, và trang nạp lại thành "Ý tưởng mới" — mất cả khối biến
-             thể lẫn khối kết hợp, không một thông báo nào. -->
+             `?id=…` bay mất, và trang nạp lại thành "Ý tưởng mới" — mất tiêu đề, mất
+             khối nguồn gốc, không một thông báo nào. -->
         <button class="primary" type="submit" id="save" disabled>Lưu</button>
         <button type="button" id="index-one" hidden>Index ý tưởng này</button>
         <button type="button" id="like" hidden></button>
         <button type="button" id="del" class="danger" hidden>Xoá</button>
+        <a id="to-variants" hidden><button type="button">Biến thể của ý tưởng này</button></a>
         <a href="/app"><button type="button">Quay lại</button></a>
       </div>
     </form>
@@ -86,71 +87,9 @@
     <div id="dup-warn" class="msg note" hidden></div>
   </div>
 
-  <section id="variants-wrap" hidden>
-    <h2>Ý tưởng biến thể</h2>
-    <p class="sub">
-      Cùng chủ đề, khác góc triển khai. Để trống dàn ý riêng thì biến thể dùng dàn ý
-      của ý tưởng gốc.
-    </p>
-
-    <div class="card">
-      <form id="vform">
-        <label for="vtitle">Tên biến thể</label>
-        <input id="vtitle" maxlength="200" placeholder="Phiên bản POV, phiên bản phản đề…">
-
-        <label for="vangle">Góc nhìn</label>
-        <input id="vangle" maxlength="1000" placeholder="Quay từ góc nhìn người đang ăn">
-
-        <label for="vscript">
-          Dàn ý riêng <span class="muted small">(bỏ trống để dùng dàn ý gốc)</span>
-        </label>
-        <textarea id="vscript" maxlength="8000"></textarea>
-
-        <div class="actions">
-          <button class="primary" type="submit" id="vsave" disabled>Thêm biến thể</button>
-          <button type="button" id="vcancel" hidden>Huỷ sửa</button>
-        </div>
-      </form>
-      <p id="vmsg" class="msg"></p>
-    </div>
-
-    <div id="variants" class="list"></div>
-  </section>
-
-  <section id="prompt-wrap" hidden>
-    <h2>Kết hợp</h2>
-    <p class="sub">
-      Ý tưởng gốc + biến thể + hook. Xem trước ra prompt để chép đi dùng ngay, hoặc lưu
-      thành một ý tưởng gốc MỚI trong kho. Sửa mẫu prompt ở trang
-      <a href="/account">Tài khoản</a>.
-    </p>
-
-    <div class="card">
-      <div class="row">
-        <div>
-          <!-- Ý tưởng gốc là trang bạn đang mở. Cố ý hiển thị thay vì làm một ô chọn
-               chỉ có đúng một lựa chọn: biến thể luôn thuộc về ý tưởng này. -->
-          <label for="pidea">Ý tưởng gốc</label>
-          <input id="pidea" readonly>
-        </div>
-        <div>
-          <label for="pvariant">Biến thể</label>
-          <select id="pvariant"></select>
-        </div>
-        <div>
-          <label for="phook">Hook</label>
-          <select id="phook"><option value="">— Không dùng hook —</option></select>
-        </div>
-      </div>
-      <div class="actions">
-        <button class="primary" type="button" id="pgen">Xem trước prompt</button>
-        <button type="button" id="psave">Lưu thành ý tưởng gốc</button>
-        <button type="button" id="pcopy" hidden>Chép</button>
-      </div>
-      <p id="pmsg" class="msg"></p>
-      <pre id="pout" class="prompt-out" hidden></pre>
-    </div>
-  </section>
+  <!-- Trang này cố ý CHỈ sửa ý tưởng gốc. Biến thể quản lý ở /variants, còn ghép
+       gốc + biến thể + hook thì ở /recommend — gom hai việc đó vào đây làm trang dài
+       ra mà vẫn phải sang trang khác khi muốn xem toàn kho. -->
 
   <section id="similar-wrap" hidden>
     <h2>Ý tưởng tương tự</h2>
