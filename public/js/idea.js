@@ -1,6 +1,6 @@
 import { del, get, patch, post } from './api.js';
 import { $, bindIndexButtons, esc, renderList, show } from './ui.js';
-import { mountNav } from './nav.js';
+import { mountNavSafe } from './nav.js';
 
 // Ba thông báo, gom lại một chỗ để chúng không lệch nhau khi sửa.
 const SAVED_MSG =
@@ -459,14 +459,8 @@ delBtn.addEventListener('click', async () => {
 // sẵn trong HTML và chỉ được mở khi trình xử lý đã gắn là lớp chắn thứ hai, cho khoảng
 // trống còn lại giữa lúc trình duyệt dựng xong HTML và lúc module bắt đầu chạy.
 
-try {
-  await mountNav('/app');
-} catch (err) {
-  // Thanh điều hướng hỏng KHÔNG được giết cả trang. Trước đây `await mountNav()` nằm ở
-  // dòng đầu module: nó ném một cái là dừng luôn việc chạy module, mọi thứ bên dưới
-  // không bao giờ chạy, và không có lấy một thông báo nào.
-  show(msg, `Không tải được thanh điều hướng: ${err.message}`, 'note');
-}
+// Hỏng cũng không giết cả trang — xem chú thích của mountNavSafe trong nav.js.
+await mountNavSafe('/app');
 
 if (!isNew) {
   try {
