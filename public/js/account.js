@@ -1,11 +1,6 @@
 import { del, get, post, put } from './api.js';
-import { $, esc, show } from './ui.js';
-import { mountNav } from './nav.js';
-
-const user = await mountNav('/account');
-$('#whoami').textContent = user.display_name
-  ? `${user.display_name} · ${user.email}`
-  : user.email;
+import { $, bindSubmit, esc, show } from './ui.js';
+import { mountNavSafe } from './nav.js';
 
 function fmtWhen(ms) {
   return new Date(ms).toLocaleString('vi-VN', {
@@ -113,8 +108,7 @@ $('#tplreset').addEventListener('click', async () => {
   }
 });
 
-$('#pw').addEventListener('submit', async (e) => {
-  e.preventDefault();
+bindSubmit($('#pw'), $('#pwsave'), async () => {
   const btn = $('#pwsave');
   show($('#pwmsg'), '');
   btn.disabled = true;
@@ -159,3 +153,19 @@ $('#logout').addEventListener('click', async () => {
 
 await loadTemplate();
 await loadSessions();
+
+// Thanh điều hướng dựng SAU CÙNG, sau khi mọi trình xử lý ở trên đã gắn.
+//
+// Trước đây nó là `await mountNav(...)` ở dòng đầu module. Hai hệ quả, cả hai đều đã
+// gặp thật: mountNav ném một cái là cả trang chết câm, và trong lúc nó còn đang chờ
+// mạng thì các form đã hiện mà chưa có trình xử lý — bấm Lưu hay gõ Enter sẽ submit
+// theo kiểu HTML thuần, điều hướng GET làm mất luôn tham số trên URL.
+await (async () => {
+  // null nghĩa là không dựng được thanh điều hướng — mountNavSafe đã báo lỗi rồi, ở
+  // đây chỉ cần đừng đọc thuộc tính trên null và làm hỏng nốt phần còn lại của trang.
+  const user = await mountNavSafe('/account');
+  if (!user) return;
+  $('#whoami').textContent = user.display_name
+    ? `${user.display_name} · ${user.email}`
+    : user.email;
+})();

@@ -1,8 +1,6 @@
 import { del, get, patch, post } from './api.js';
-import { $, esc, show } from './ui.js';
-import { mountNav } from './nav.js';
-
-await mountNav('/variants');
+import { $, bindSubmit, esc, show } from './ui.js';
+import { mountNavSafe } from './nav.js';
 
 const listEl = $('#list');
 const msgEl = $('#msg');
@@ -120,8 +118,7 @@ async function load(append = false) {
   }
 }
 
-$('#vform').addEventListener('submit', async (e) => {
-  e.preventDefault();
+bindSubmit($('#vform'), $('#vsave'), async () => {
   const body = {
     title: $('#vtitle').value.trim(),
     angle: $('#vangle').value.trim(),
@@ -164,8 +161,7 @@ $('#vcancel').addEventListener('click', () => {
   show(vmsg, '');
 });
 
-$('#filters').addEventListener('submit', (e) => {
-  e.preventDefault();
+bindSubmit($('#filters'), $('#vfilter-go'), () => {
   cursor = null;
   load(false);
 });
@@ -231,3 +227,11 @@ await load(false);
 
 await loadIdeaOptions();
 await load(false);
+
+// Thanh điều hướng dựng SAU CÙNG, sau khi mọi trình xử lý ở trên đã gắn.
+//
+// Trước đây nó là `await mountNav(...)` ở dòng đầu module. Hai hệ quả, cả hai đều đã
+// gặp thật: mountNav ném một cái là cả trang chết câm, và trong lúc nó còn đang chờ
+// mạng thì các form đã hiện mà chưa có trình xử lý — bấm Lưu hay gõ Enter sẽ submit
+// theo kiểu HTML thuần, điều hướng GET làm mất luôn tham số trên URL.
+await mountNavSafe('/variants');

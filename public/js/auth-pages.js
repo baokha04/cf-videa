@@ -1,5 +1,5 @@
 import { post } from './api.js';
-import { $, show } from './ui.js';
+import { $, bindSubmit, show } from './ui.js';
 import { mountThemeToggle } from './theme.js';
 
 // Một file phục vụ cả login.html lẫn register.html — hai form giống nhau tới mức
@@ -21,8 +21,14 @@ function nextUrl() {
   return '/app';
 }
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
+/**
+ * Ở đây nút gửi để `disabled` sẵn còn quan trọng hơn các trang khác: hai ô nhập của
+ * form này CÓ thuộc tính `name`, và form không khai báo `method` nên mặc định là GET.
+ * Một cú submit thuần — trước lúc module này tải và chạy xong — sẽ điều hướng tới
+ * /login?email=…&password=… , tức là đẩy mật khẩu vào thanh địa chỉ, vào lịch sử trình
+ * duyệt và vào header Referer của mọi request sau đó.
+ */
+bindSubmit(form, submit, async () => {
   show(msg, '');
   submit.disabled = true;
   submit.textContent = isRegister ? 'Đang tạo…' : 'Đang đăng nhập…';

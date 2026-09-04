@@ -1,8 +1,6 @@
 import { get } from './api.js';
-import { $, bindIndexButtons, renderList, show } from './ui.js';
-import { mountNav } from './nav.js';
-
-await mountNav('/search');
+import { $, bindIndexButtons, bindSubmit, renderList, show } from './ui.js';
+import { mountNavSafe } from './nav.js';
 
 const listEl = $('#list');
 const msg = $('#msg');
@@ -44,8 +42,7 @@ async function run(q) {
 // index — nút Index trên thẻ vì thế vẫn có việc để làm.
 bindIndexButtons(listEl, { onMessage: (text, kind) => show(msg, text, kind) });
 
-$('#f').addEventListener('submit', (e) => {
-  e.preventDefault();
+bindSubmit($('#f'), go, () => {
   const q = $('#q').value.trim();
   if (q) void run(q);
 });
@@ -55,3 +52,11 @@ if (initial) {
   $('#q').value = initial;
   void run(initial);
 }
+
+// Thanh điều hướng dựng SAU CÙNG, sau khi mọi trình xử lý ở trên đã gắn.
+//
+// Trước đây nó là `await mountNav(...)` ở dòng đầu module. Hai hệ quả, cả hai đều đã
+// gặp thật: mountNav ném một cái là cả trang chết câm, và trong lúc nó còn đang chờ
+// mạng thì các form đã hiện mà chưa có trình xử lý — bấm Lưu hay gõ Enter sẽ submit
+// theo kiểu HTML thuần, điều hướng GET làm mất luôn tham số trên URL.
+await mountNavSafe('/search');

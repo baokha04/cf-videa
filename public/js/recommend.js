@@ -1,8 +1,6 @@
 import { get, post } from './api.js';
 import { $, bindIndexButtons, esc, renderList, show } from './ui.js';
-import { mountNav } from './nav.js';
-
-await mountNav('/recommend');
+import { mountNavSafe } from './nav.js';
 
 const msg = $('#msg');
 const cmsg = $('#cmsg');
@@ -11,29 +9,6 @@ const listEl = $('#list');
 // Nút Index trên thẻ gợi ý. Gợi ý thường đến từ Vectorize nên đã index, nhưng nhánh
 // cold_start đọc thẳng D1 và trả về được ý tưởng chưa index — nút vẫn có việc để làm.
 bindIndexButtons(listEl, { onMessage: (text, kind) => show(msg, text, kind) });
-
-// --- Danh sách gợi ý -------------------------------------------------------
-
-try {
-  const data = await get('/api/recommendations?limit=20');
-  if (data.basis === 'cold_start') {
-    show(
-      msg,
-      data.message || 'Hãy thích vài ý tưởng để gợi ý bám sát gu của bạn hơn.',
-      'note',
-    );
-  } else {
-    show(msg, `Dựa trên ${data.source_count} ý tưởng bạn đã thích.`, 'ok');
-  }
-  renderList(
-    listEl,
-    data.items,
-    'Chưa có gì để gợi ý. Hãy thêm ý tưởng và thích vài cái bạn tâm đắc.',
-  );
-} catch (err) {
-  show(msg, err.message);
-  listEl.innerHTML = '';
-}
 
 // --- Kết hợp ---------------------------------------------------------------
 //
@@ -181,4 +156,35 @@ if (await loadIdeaOptions()) {
   await loadHookOptions();
 } else {
   setReady(false, 'Chưa có ý tưởng gốc nào để ghép. Hãy tạo một ý tưởng trước.');
+}
+
+// Thanh điều hướng dựng SAU CÙNG, sau khi mọi trình xử lý ở trên đã gắn.
+//
+// Trước đây nó là `await mountNav(...)` ở dòng đầu module. Hai hệ quả, cả hai đều đã
+// gặp thật: mountNav ném một cái là cả trang chết câm, và trong lúc nó còn đang chờ
+// mạng thì các form đã hiện mà chưa có trình xử lý — bấm Lưu hay gõ Enter sẽ submit
+// theo kiểu HTML thuần, điều hướng GET làm mất luôn tham số trên URL.
+await mountNavSafe('/recommend');
+
+// --- Danh sách gợi ý -------------------------------------------------------
+
+try {
+  const data = await get('/api/recommendations?limit=20');
+  if (data.basis === 'cold_start') {
+    show(
+      msg,
+      data.message || 'Hãy thích vài ý tưởng để gợi ý bám sát gu của bạn hơn.',
+      'note',
+    );
+  } else {
+    show(msg, `Dựa trên ${data.source_count} ý tưởng bạn đã thích.`, 'ok');
+  }
+  renderList(
+    listEl,
+    data.items,
+    'Chưa có gì để gợi ý. Hãy thêm ý tưởng và thích vài cái bạn tâm đắc.',
+  );
+} catch (err) {
+  show(msg, err.message);
+  listEl.innerHTML = '';
 }

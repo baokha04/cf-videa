@@ -1,8 +1,6 @@
 import { del, get, patch, post } from './api.js';
-import { $, bindIndexButtons, esc, renderList, show } from './ui.js';
-import { mountNav } from './nav.js';
-
-await mountNav('/app');
+import { $, bindIndexButtons, bindSubmit, esc, renderList, show } from './ui.js';
+import { mountNavSafe } from './nav.js';
 
 // Ba thông báo, gom lại một chỗ để chúng không lệch nhau khi sửa.
 const SAVED_MSG =
@@ -114,6 +112,8 @@ function fill(idea) {
     ? 'Đã nằm trong tìm kiếm ngữ nghĩa.'
     : 'Chưa index — bấm "Index ý tưởng này" khi bạn viết xong.';
   indexBtn.hidden = false;
+  // Form đã mang dữ liệu thật — giờ mới cho bấm Lưu (xem chú thích ở nút Lưu bên dưới).
+  saveBtn.disabled = false;
   // Đã sạch thì vẫn bấm được, chỉ là không có việc gì để làm. Ghi rõ trên nhãn thay
   // vì vô hiệu hoá nút: nút chết mà không nói lý do là kiểu tệ nhất.
   indexBtn.textContent = idea.indexed ? 'Index lại ý tưởng này' : 'Index ý tưởng này';
@@ -158,26 +158,6 @@ async function loadSimilar() {
     renderList($('#similar'), data.items, '');
   } catch {
     // Gợi ý tương tự là phần thêm; hỏng thì im lặng bỏ qua.
-  }
-}
-
-if (!isNew) {
-  try {
-    const { idea } = await get(`/api/ideas/${encodeURIComponent(id)}`);
-    fill(idea);
-    // Thông báo "vừa tạo xong" phải phản ánh trạng thái THẬT sau khi đã đọc lại
-    // bản ghi, chứ không phải giả định lạc quan — ý tưởng chưa index sẽ không
-    // xuất hiện trong tìm kiếm ngữ nghĩa, và người dùng cần biết ngay.
-    if (new URLSearchParams(location.search).get('created') === '1') {
-      show(msg, CREATED_MSG, 'ok');
-    }
-    $('#variants-wrap').hidden = false;
-    $('#prompt-wrap').hidden = false;
-    await loadVariants();
-    await loadHooks();
-    void loadSimilar();
-  } catch (err) {
-    show(msg, err.message);
   }
 }
 
@@ -248,8 +228,7 @@ function resetVariantForm() {
 }
 
 if (!isNew) {
-  $('#vform').addEventListener('submit', async (e) => {
-    e.preventDefault();
+  bindSubmit($('#vform'), $('#vsave'), async () => {
     const body = {
       title: $('#vtitle').value.trim(),
       angle: $('#vangle').value.trim(),
@@ -374,8 +353,10 @@ if (!isNew) {
   });
 }
 
-$('#f').addEventListener('submit', async (e) => {
-  e.preventDefault();
+// enable chỉ khi là ý tưởng mới: ý tưởng đã có thì nút Lưu mở trong fill(), tức là sau
+// khi form đã mang dữ liệu THẬT. Bấm Lưu trên một form còn rỗng sẽ ghi đè ý tưởng bằng
+// đúng cái rỗng đó; nạp hỏng thì nút ở lại khoá và thông báo lỗi nói vì sao.
+bindSubmit($('#f'), saveBtn, async () => {
   show(msg, '');
   const body = readForm();
   if (!body.title) {
@@ -402,7 +383,7 @@ $('#f').addEventListener('submit', async (e) => {
     saveBtn.disabled = false;
     saveBtn.textContent = 'Lưu';
   }
-});
+}, { enable: isNew });
 
 if (!isNew) {
   indexBtn.addEventListener('click', async () => {
@@ -453,3 +434,50 @@ delBtn.addEventListener('click', async () => {
     delBtn.disabled = false;
   }
 });
+
+// --- Nạp dữ liệu ------------------------------------------------------------
+//
+// PHẢI nằm CUỐI CÙNG, sau khi mọi trình xử lý ở trên đã gắn xong. Đây là lần `await`
+// đầu tiên của module, và trước nó không được có cái nào khác.
+//
+// Lý do là một lỗi thật đã gặp: form ý tưởng gốc hiện ra ngay từ HTML tĩnh, nhưng
+// trình xử lý `submit` của nó lại gắn SAU mấy lời gọi mạng này. Bấm "Lưu" (hoặc gõ
+// Enter trong một ô văn bản) trong khoảng chờ đó thì trình duyệt submit form theo kiểu
+// HTML thuần: điều hướng GET về chính trang này với query dựng từ các ô nhập. Không ô
+// nào có thuộc tính `name`, nên query ra RỖNG — `?id=…` biến mất, `isNew` thành true,
+// và trang nạp lại thành "Ý tưởng mới": chỉ còn form ý tưởng gốc, mất cả khối biến thể
+// lẫn khối kết hợp, không một thông báo lỗi nào. Trên máy local lời gọi xong trong vài
+// chục mili giây nên gần như không bao giờ dính; trên production thì cửa sổ đó đủ rộng.
+//
+// Gắn trình xử lý trước rồi mới `await` là cách đóng cửa sổ đó. Nút Lưu để `disabled`
+// sẵn trong HTML và chỉ được mở khi trình xử lý đã gắn là lớp chắn thứ hai, cho khoảng
+// trống còn lại giữa lúc trình duyệt dựng xong HTML và lúc module bắt đầu chạy.
+
+// Hỏng cũng không giết cả trang — xem chú thích của mountNavSafe trong nav.js.
+await mountNavSafe('/app');
+
+if (!isNew) {
+  try {
+    const { idea } = await get(`/api/ideas/${encodeURIComponent(id)}`);
+    fill(idea);
+    // Thông báo "vừa tạo xong" phải phản ánh trạng thái THẬT sau khi đã đọc lại
+    // bản ghi, chứ không phải giả định lạc quan — ý tưởng chưa index sẽ không
+    // xuất hiện trong tìm kiếm ngữ nghĩa, và người dùng cần biết ngay.
+    if (new URLSearchParams(location.search).get('created') === '1') {
+      show(msg, CREATED_MSG, 'ok');
+    }
+    $('#variants-wrap').hidden = false;
+    $('#prompt-wrap').hidden = false;
+
+    // Ba lời gọi này độc lập nhau, nên KHÔNG xâu chuỗi bằng await liên tiếp: trước đây
+    // hook không tải được chỉ vì biến thể lỗi trước nó. Chạy song song, mỗi cái tự báo
+    // lỗi vào đúng chỗ của mình.
+    loadVariants().catch((e) => show($('#vmsg'), e.message));
+    loadHooks();
+    void loadSimilar();
+  } catch (err) {
+    // Không đọc được chính ý tưởng thì hai khối dưới cũng vô nghĩa — để nguyên trạng
+    // thái ẩn và nói lỗi ra, thay vì đi tải biến thể cho một trang không dùng được.
+    show(msg, err.message);
+  }
+}
