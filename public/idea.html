@@ -70,7 +70,12 @@
       </p>
 
       <div class="actions">
-        <button class="primary" type="submit" id="save">Lưu</button>
+        <!-- disabled sẵn; JS mở khoá khi form đã mang dữ liệu thật (ý tưởng mới thì
+             mở ngay). Không có lớp này thì một cú bấm trong lúc trang còn nạp sẽ
+             submit form kiểu HTML thuần: không ô nào có `name` nên query ra rỗng,
+             `?id=…` bay mất, và trang nạp lại thành "Ý tưởng mới" — mất cả khối biến
+             thể lẫn khối kết hợp, không một thông báo nào. -->
+        <button class="primary" type="submit" id="save" disabled>Lưu</button>
         <button type="button" id="index-one" hidden>Index ý tưởng này</button>
         <button type="button" id="like" hidden></button>
         <button type="button" id="del" class="danger" hidden>Xoá</button>
@@ -102,7 +107,7 @@
         <textarea id="vscript" maxlength="8000"></textarea>
 
         <div class="actions">
-          <button class="primary" type="submit" id="vsave">Thêm biến thể</button>
+          <button class="primary" type="submit" id="vsave" disabled>Thêm biến thể</button>
           <button type="button" id="vcancel" hidden>Huỷ sửa</button>
         </div>
       </form>
