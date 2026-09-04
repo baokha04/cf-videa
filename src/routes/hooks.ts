@@ -9,6 +9,18 @@ import { normText, requiredText } from '../util/validate';
 
 /** Thư viện hook có nhóm danh mục. Hook không gắn cứng vào biến thể nào. */
 
+/**
+ * Trần độ dài nội dung hook. Cột `hooks.text` là TEXT thuần nên SQLite không chặn gì
+ * cả — trần THẬT nằm ở đây và ở `maxlength` của ô nhập, không phải ở schema.
+ *
+ * 2000 chứ không phải hơn: `hookEmbedText` gộp text + note rồi cắt ở MAX_EMBED_CHARS
+ * (4000). Giữ 2000 + 300 dưới ngưỡng đó nghĩa là mọi hook hợp lệ đều được nhúng TRỌN
+ * VẸN — hook dài hơn trần nhúng sẽ bị cắt lặng lẽ và tìm kiếm ngữ nghĩa không bao giờ
+ * thấy phần đuôi.
+ */
+const HOOK_TEXT_MAX = 2000;
+const HOOK_NOTE_MAX = 300;
+
 /** Xem chú thích ở routes/variants.ts — cùng một lý do. */
 function toDto(row: hooksDb.HookRow) {
   const {
@@ -99,8 +111,8 @@ export async function createHook(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const body = await readJson(c);
   const input = {
-    text: requiredText(body['text'], 500, 'text'),
-    note: normText(body['note'], 300, 'note'),
+    text: requiredText(body['text'], HOOK_TEXT_MAX, 'text'),
+    note: normText(body['note'], HOOK_NOTE_MAX, 'note'),
     category_id: parseCategoryId(body['category_id']),
   };
   // Như ý tưởng: chỉ tính hash và ghi D1. Không nhúng, không đụng Vectorize —
@@ -120,8 +132,8 @@ export async function updateHook(c: Ctx): Promise<Response> {
   const body = await readJson(c);
   const has = (k: string) => Object.prototype.hasOwnProperty.call(body, k);
   const input = {
-    text: has('text') ? requiredText(body['text'], 500, 'text') : existing.text,
-    note: has('note') ? normText(body['note'], 300, 'note') : existing.note,
+    text: has('text') ? requiredText(body['text'], HOOK_TEXT_MAX, 'text') : existing.text,
+    note: has('note') ? normText(body['note'], HOOK_NOTE_MAX, 'note') : existing.note,
     category_id: has('category_id') ? parseCategoryId(body['category_id']) : existing.category_id,
   };
   // Đổi mỗi danh mục cũng phải được nhìn thấy, dù content_hash không đổi: danh mục nằm

@@ -536,7 +536,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | POST | `/api/ideas/combine` | ✓ | `{idea_id, variant_id, hook_id?, title?}` → **ý tưởng gốc MỚI** có lineage |
 | GET · POST | `/api/hook-categories` | ✓ | Danh mục hook; trùng tên trả 400 |
 | PATCH · DELETE | `/api/hook-categories/:id` | ✓ | Xoá danh mục KHÔNG xoá hook bên trong |
-| GET · POST | `/api/hooks` | ✓ | `?category=<id>` hoặc `?category=none` |
+| GET · POST | `/api/hooks` | ✓ | `?category=<id>` hoặc `?category=none`; `text` tối đa 2000 ký tự |
 | PATCH · DELETE | `/api/hooks/:id` | ✓ | |
 | POST | `/api/hooks/:id/index` | ✓ | Index đúng hook đó |
 | GET | `/api/ideas/titles` | ✓ | id + tiêu đề mọi ý tưởng cho ô chọn; trần 500 kèm cờ `truncated` |
