@@ -221,6 +221,9 @@ select {
   padding-right: 34px;
 }
 textarea { min-height: 130px; resize: vertical; line-height: 1.5; }
+/* Ô rộng hơn cho nội dung viết liền mấy câu — hook thường dài 2-3 dòng và người dùng
+   phải đọc lại cả câu trước khi lưu, chứ không gõ một dòng rồi thôi. */
+textarea.roomy { min-height: 200px; }
 input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
