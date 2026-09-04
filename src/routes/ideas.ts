@@ -4,6 +4,7 @@ import { badRequest, notFound } from '../http/response';
 import * as ideasDb from '../db/ideas';
 import * as likesDb from '../db/likes';
 import * as variantsDb from '../db/variants';
+import * as hooksDb from '../db/hooks';
 import { setIdeaTags, tagsForIdeas } from '../db/tags';
 import { ideaEmbedText } from '../content';
 import { contentHash } from '../vec/embeddings';
@@ -16,6 +17,7 @@ import {
   PLATFORMS,
   type IdeaDto,
   type IdeaRow,
+  type IdeaSourceDto,
   type IdeaStatus,
   type Platform,
 } from '../types';
@@ -152,12 +154,54 @@ export async function createIdea(c: Ctx): Promise<Response> {
   return c.json({ idea: toDto(row, tags, false, 0), indexed: false }, 201);
 }
 
+/**
+ * Tra tên cho ba khoá ngoại lineage của một ý tưởng sinh ra bằng Kết hợp.
+ *
+ * Ba id đã nằm sẵn trong DTO từ trước, nhưng chỉ có id thì giao diện không hiển thị
+ * được gì có nghĩa — trang ý tưởng chỉ nói được câu chung chung "được tạo bằng chức
+ * năng kết hợp" mà không cho biết ghép từ biến thể nào, hook nào.
+ *
+ * Trả về null khi ý tưởng không phải sinh ra bằng kết hợp, để không tốn truy vấn nào
+ * cho tuyệt đại đa số ý tưởng tự nhập.
+ *
+ * Từng mảnh vẫn có thể là null dù id khác null: cả ba khoá ngoại đều ON DELETE SET
+ * NULL nên xoá nguồn sau khi kết hợp là hợp lệ, và mọi getter ở đây đều ràng buộc
+ * user_id nên id của người khác cũng ra null — cách ly người dùng đi trước tiện lợi.
+ */
+async function resolveSource(
+  c: Ctx,
+  userId: string,
+  row: IdeaRow,
+): Promise<IdeaSourceDto | null> {
+  if (!row.source_idea_id && !row.source_variant_id && !row.source_hook_id) return null;
+
+  const [idea, variant, hook] = await Promise.all([
+    row.source_idea_id ? ideasDb.getById(c.env, userId, row.source_idea_id) : null,
+    row.source_variant_id ? variantsDb.getById(c.env, userId, row.source_variant_id) : null,
+    row.source_hook_id ? hooksDb.getHook(c.env, userId, row.source_hook_id) : null,
+  ]);
+
+  // Tên danh mục chỉ tra khi thật sự có hook có danh mục — thêm một truy vấn nữa cho
+  // một ý tưởng không dùng hook là vô ích.
+  let category: string | null = null;
+  if (hook?.category_id) {
+    const cats = await hooksDb.listCategories(c.env, userId);
+    category = cats.find((x) => x.id === hook.category_id)?.name ?? null;
+  }
+
+  return {
+    idea: idea ? { id: idea.id, title: idea.title } : null,
+    variant: variant ? { id: variant.id, title: variant.title, idea_id: variant.idea_id } : null,
+    hook: hook ? { id: hook.id, text: hook.text, category } : null,
+  };
+}
+
 export async function getIdea(c: Ctx): Promise<Response> {
   const user = requireUser(c);
   const row = await ideasDb.getById(c.env, user.id, pathParam(c, 'id'));
   if (!row) throw notFound('Không tìm thấy ý tưởng.');
   const [dto] = await hydrate(c, user.id, [row]);
-  return c.json({ idea: dto });
+  return c.json({ idea: { ...dto, source: await resolveSource(c, user.id, row) } });
 }
 
 export async function updateIdea(c: Ctx): Promise<Response> {

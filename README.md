@@ -372,6 +372,20 @@ lên Vectorize mới là việc người dùng vừa bấm nút để làm.
 mới**, khác hẳn `GET /api/prompt` vốn chỉ ghép ra chuỗi rồi thôi. Ba cột
 `source_idea_id` / `source_variant_id` / `source_hook_id` (migration 0006) ghi lại xuất xứ.
 
+**Xuất xứ đó được HIỆN ra, không chỉ lưu.** `GET /api/ideas/:id` tra sẵn tên cho ba id ấy
+và trả kèm trường `source`; trang `/idea` dựng từ đó một dòng "Ghép từ … + biến thể … +
+hook …", mỗi mảnh là một liên kết đi tới đúng mục. Trước đây trang chỉ nói được một câu
+chung chung "được tạo bằng chức năng kết hợp" — người dùng nhìn ý tưởng mà không biết nó
+ra đời từ biến thể nào, hook nào.
+
+Việc tra tên cố ý **chỉ nằm ở endpoint một-ý-tưởng**, không ở danh sách: mỗi ý tưởng tốn
+thêm ba truy vấn, và một trang 20 mục sẽ thành 60 truy vấn chỉ để hiện một dòng phụ.
+Ba mảnh độc lập nhau và mảnh nào cũng có thể vắng — cả ba khoá ngoại đều `ON DELETE SET
+NULL`, nên xoá nguồn sau khi kết hợp là hợp lệ. Ý tưởng gốc và biến thể là **bắt buộc**
+lúc kết hợp nên vắng mặt chỉ có thể là "đã bị xoá" và giao diện nói đúng như vậy; hook thì
+tuỳ chọn, nên `source_hook_id` NULL là "không dùng hook" và không nêu gì cả — gộp hai
+trường hợp lại thành một câu là nói dối ở đúng lúc người dùng cần biết.
+
 **Có hai lối vào cùng một endpoint.** Khối kết hợp nằm ở cả trang một ý tưởng
 (`/idea`, ý tưởng gốc là trang đang mở) lẫn trang gợi ý (`/recommend`, chọn ý tưởng từ
 toàn kho qua `/api/ideas/titles`). Trang gợi ý là nơi bạn vừa nhìn thấy một ý tưởng cũ
@@ -546,7 +560,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | POST | `/api/variants/:id/index` | ✓ | Index đúng biến thể đó |
 | GET | `/api/prompt` | ✓ | `?variant_id=&hook_id=` — hook để trống vẫn ghép được |
 | GET · PUT · DELETE | `/api/prompt-template` | ✓ | Đọc / lưu / đưa về mặc định |
-| GET · PATCH · DELETE | `/api/ideas/:id` | ✓ | 404 khi không phải của bạn |
+| GET · PATCH · DELETE | `/api/ideas/:id` | ✓ | 404 khi không phải của bạn; GET kèm `source` (tên ý tưởng/biến thể/hook nguồn, `null` nếu tự nhập) |
 | POST · DELETE | `/api/ideas/:id/like` | ✓ | Idempotent |
 | GET | `/api/ideas/:id/similar` | ✓ | Dùng lại vector đã lưu |
 | GET | `/api/search` | ✓ | Ngữ nghĩa; lùi về từ khoá khi AI/Vectorize hỏng |

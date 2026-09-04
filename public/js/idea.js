@@ -21,6 +21,7 @@ const likeBtn = $('#like');
 const delBtn = $('#del');
 const indexBtn = $('#index-one');
 const dupWarn = $('#dup-warn');
+const lineageEl = $('#lineage');
 
 let liked = false;
 // Khai báo Ở ĐÂY chứ không phải cạnh các hàm dùng chúng: `let` nằm trong vùng chết
@@ -45,6 +46,56 @@ function readForm() {
   };
 }
 
+/** Một mảnh nguồn gốc: tên kèm liên kết, hoặc "đã bị xoá" khi tra không ra. */
+function lineagePart(obj, label, render) {
+  if (!obj) return `${label} <span class="gone">đã bị xoá</span>`;
+  return `${label} ${render(obj)}`;
+}
+
+/**
+ * Nguồn gốc của ý tưởng sinh ra bằng Kết hợp.
+ *
+ * Ý tưởng gốc và biến thể là BẮT BUỘC lúc kết hợp (POST /api/ideas/combine đòi cả
+ * `idea_id` lẫn `variant_id`), nên hai mảnh đó luôn được nêu: vắng mặt chỉ có thể là
+ * đã bị xoá, vì cả ba khoá ngoại lineage đều ON DELETE SET NULL. Lặng lẽ bỏ qua mảnh
+ * vắng sẽ khiến dòng này đọc như thể ý tưởng ghép thẳng từ ý tưởng gốc, không qua
+ * biến thể nào — sai hẳn nguồn gốc thật.
+ *
+ * Hook thì ngược lại: nó tuỳ chọn, nên `source_hook_id` NULL là "không dùng hook" chứ
+ * KHÔNG phải "đã bị xoá", và trường hợp đó không nêu gì cả. Hai chuyện này không thể
+ * phân biệt được nữa một khi hook bị xoá, nên chọn cách không nói dối.
+ */
+function renderLineage(idea) {
+  const src = idea.source;
+  // Không phải ý tưởng kết hợp thì không có gì để nói — ẩn hẳn thay vì để một khung
+  // rỗng chiếm chỗ trên mọi ý tưởng tự nhập.
+  if (!src) {
+    lineageEl.hidden = true;
+    lineageEl.innerHTML = '';
+    return;
+  }
+
+  const parts = [
+    lineagePart(src.idea, 'ý tưởng gốc',
+      (o) => `<a href="/idea?id=${encodeURIComponent(o.id)}"><strong>${esc(o.title)}</strong></a>`),
+    lineagePart(src.variant, 'biến thể',
+      (o) => `<a href="/variants?idea=${encodeURIComponent(o.idea_id)}">`
+        + `<strong>${esc(o.title)}</strong></a>`),
+  ];
+  if (idea.source_hook_id || src.hook) {
+    parts.push(lineagePart(src.hook, 'hook', (o) => {
+      // Hook có thể dài tới 2000 ký tự — cắt để một dòng nguồn gốc không đẩy cả form
+      // xuống dưới màn hình. Bản đầy đủ nằm ở trang /hooks.
+      const short = o.text.length > 80 ? `${o.text.slice(0, 80)}…` : o.text;
+      const cat = o.category ? `[${esc(o.category)}] ` : '';
+      return `<a href="/hooks">${cat}<strong>${esc(short)}</strong></a>`;
+    }));
+  }
+
+  lineageEl.innerHTML = `Ghép từ ${parts.join(' + ')}.`;
+  lineageEl.hidden = false;
+}
+
 function fill(idea) {
   $('#title').value = idea.title;
   $('#script_outline').value = idea.script_outline;
@@ -67,9 +118,13 @@ function fill(idea) {
   // vì vô hiệu hoá nút: nút chết mà không nói lý do là kiểu tệ nhất.
   indexBtn.textContent = idea.indexed ? 'Index lại ý tưởng này' : 'Index ý tưởng này';
 
+  // Chi tiết nguồn gốc nằm ở khối riêng bên dưới, nên câu ở đây chỉ cần báo LOẠI.
   if (idea.source_idea_id) {
     $('#sub').textContent += ' Ý tưởng này được tạo bằng chức năng kết hợp.';
   }
+  // `source` chỉ có ở GET /api/ideas/:id. PATCH và POST .../index trả DTO không kèm
+  // nó, nên giữ nguyên khối đang hiện thay vì xoá trắng mỗi lần lưu.
+  if (idea.source !== undefined) renderLineage(idea);
 }
 
 /** Cảnh báo trùng — có liên kết đi tới từng ý tưởng để người dùng tự so. */
