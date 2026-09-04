@@ -101,10 +101,10 @@ export async function resetPromptTemplate(c: Ctx): Promise<Response> {
  *
  * Cố ý không dùng `dirty_ideas` của /api/health cho việc này: con số đó đếm toàn hệ
  * thống và endpoint đó lại công khai, nên vừa sai (lẫn ý tưởng của người khác) vừa
- * không nên là nguồn dữ liệu cho giao diện của một tài khoản cụ thể.
+ * không nên là nguồn dữ liệu cho một tài khoản cụ thể.
  *
- * `dirty` là tổng của cả ba loại — giao diện cũ chỉ đọc trường này nên nó phải giữ
- * nguyên ý nghĩa "còn bao nhiêu thứ chưa lên Vectorize".
+ * Giao diện không còn thanh đồng bộ hàng loạt — mỗi mục tự index bằng nút của nó — nên
+ * endpoint này còn lại đúng một việc: soi trạng thái (smoke test, chẩn đoán tay).
  */
 export async function syncStatus(c: Ctx): Promise<Response> {
   const user = requireUser(c);
@@ -114,20 +114,6 @@ export async function syncStatus(c: Ctx): Promise<Response> {
     hooksDb.countDirty(c.env, user.id),
   ]);
   return c.json({ dirty: ideas + variants + hooks, by_type: { ideas, variants, hooks } });
-}
-
-/**
- * Đối soát cho chính người dùng đang đăng nhập — nút "Đồng bộ index" trên UI.
- *
- * Đây là đường HÀNG LOẠT. Nút Index của từng mục đi đường khác (indexOne), vì worklist
- * ở đây sắp theo `updated_at` và không nhắm được vào một hàng cụ thể.
- *
- * 50 áp cho TỪNG loại, không phải tổng: ba loại dùng ba worklist riêng, và chia nhỏ
- * hạn mức theo tỷ lệ chỉ làm mỗi vòng gọi lại nhiều hơn mà không rẻ đi.
- */
-export async function reindexMine(c: Ctx): Promise<Response> {
-  const user = requireUser(c);
-  return c.json(await reconcileAll(c.env, 50, user.id));
 }
 
 /** Đối soát toàn hệ thống — chỉ dành cho ADMIN_TOKEN. */
@@ -162,7 +148,7 @@ export async function reindexAdmin(c: Ctx): Promise<Response> {
  * Pages Functions không có cron trigger, và dự án cố ý KHÔNG dựng Worker riêng chỉ
  * để có lịch: cùng những việc này đã chạy theo kiểu cơ hội trên một phần nhỏ số lần
  * đăng nhập (xem src/routes/auth.ts), còn việc index ý tưởng thì người dùng bấm nút
- * "Đồng bộ lại index" khi cần. Endpoint này là đường quét toàn bộ một lần, dùng khi
+ * "Index" của từng mục khi cần. Endpoint này là đường quét toàn bộ một lần, dùng khi
  * muốn dọn ngay thay vì chờ lưu lượng.
  */
 export async function maintenance(c: Ctx): Promise<Response> {

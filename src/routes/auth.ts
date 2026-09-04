@@ -127,7 +127,7 @@ export async function login(c: Ctx): Promise<Response> {
   //
   // Ba bảng này phình ra vô hạn nếu không ai dọn: phiên đã hết hạn, bộ đếm rate limit
   // của các cửa sổ đã qua, và hàng đợi vector mồ côi. Việc index ý tưởng thì KHÔNG nằm
-  // ở đây — nó do người dùng bấm nút "Đồng bộ lại index", vì đó là việc họ nhìn thấy
+  // ở đây — nó do người dùng bấm nút "Index" của từng mục, vì đó là việc họ nhìn thấy
   // kết quả và biết khi nào cần.
   if (Math.random() < 0.05) {
     c.executionCtx.waitUntil(sweepInBackground(c.env));

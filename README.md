@@ -59,7 +59,7 @@ Upsert lên Vectorize là bất đồng bộ. Số đo thật trên deployment p
 +68s  →  5/5
 ```
 
-Nghĩa là sau khi bấm "Đồng bộ index", vẫn phải chờ thêm khoảng một phút nữa thì ý tưởng
+Nghĩa là sau khi bấm "Index", vẫn phải chờ thêm khoảng một phút nữa thì ý tưởng
 mới tìm được bằng tìm kiếm ngữ nghĩa. Danh sách và tìm từ khoá (đọc thẳng D1) thì thấy
 ngay. Giao diện nói đúng con số này thay vì để người dùng tưởng tìm kiếm bị hỏng.
 
@@ -300,12 +300,16 @@ thì tuyệt đối không — chỉ ghi log. Chính cơ chế này đã tìm ra
 Tạo và sửa ý tưởng, biến thể hay hook đều **chỉ ghi D1**. Không nhúng, không gọi Workers
 AI, không đụng Vectorize. Việc index dồn lại cho tới khi người dùng bấm nút.
 
-**Có hai nút, và chúng đi hai đường khác nhau:**
+**Chỉ có MỘT nút trong giao diện:**
 
 | Nút | Ở đâu | Làm gì |
 |---|---|---|
 | **Index** | trên từng thẻ ý tưởng / biến thể / hook | index ĐÚNG mục đó, và **kiểm tra trùng** (chỉ với ý tưởng) |
-| **Đồng bộ index** | trang kho ý tưởng | rút cạn cả ba kho theo lô 50 mỗi loại |
+
+Thanh "Đồng bộ index" hàng loạt trên trang kho ý tưởng đã bị bỏ: mỗi mục đã có nút Index
+riêng, nên thanh đó chỉ làm lại đúng việc ấy mà không kiểm tra trùng và không nói được
+mục nào vừa xong. Đối soát hàng loạt vẫn còn, nhưng chỉ là đường bảo trì cho admin
+(`POST /api/admin/reindex`).
 
 Nút Index từng mục **không** dùng lại `reconcile(limit=1)`, và đó là điểm dễ sai nhất
 của tính năng này: worklist của `reconcile` sắp theo `updated_at`, nên nó sẽ index một
@@ -335,9 +339,9 @@ văn bản đem đi nhúng, nên đổi trạng thái không làm `content_hash`
 vĩnh viễn và `/api/search?status=…` lọc sai mà không có dấu hiệu gì. Cột
 `indexed_meta_hash` (migrations/0004) tồn tại chỉ để bịt chỗ đó.
 
-Thanh đồng bộ trên trang kho ý tưởng **luôn hiển thị**, kể cả khi đã sạch, và lấy số
-đếm từ `GET /api/sync` chứ không đếm trên danh sách đang hiện — danh sách bị phân
-trang và lọc, đếm trên đó sẽ bỏ sót ý tưởng nằm ngoài trang hiện tại.
+Trạng thái "chưa index" hiện thẳng trên từng thẻ (chip `pending` cạnh nút Index), nên
+người dùng thấy đúng mục nào còn thiếu thay vì một con số tổng. `GET /api/sync` vẫn còn
+để soi tổng số hàng bẩn theo từng loại — smoke test và chẩn đoán tay dùng nó.
 
 ### Kiểm tra ý tưởng trùng — cảnh báo, không chặn
 
@@ -356,7 +360,7 @@ danh sách kèm liên kết đi tới từng ý tưởng.
 **Giới hạn phải biết:** hai ý tưởng index cách nhau dưới một phút sẽ **không** phát hiện
 được nhau, vì cái trước chưa truy vấn được. Giao diện nói thẳng điều này trong khối cảnh
 báo thay vì để người dùng tưởng tính năng hỏng. Vì cùng lý do đó, kiểm tra trùng chỉ chạy
-ở nút Index của từng mục — nút đồng bộ hàng loạt xử lý tới 50 hàng một lượt, phần lớn
+ở nút Index của từng mục — đối soát hàng loạt xử lý tới 50 hàng một lượt, phần lớn
 chưa kịp nhìn thấy nhau, và 50 cảnh báo cùng lúc cũng không ai đọc.
 
 Lỗi ở bước kiểm tra trùng KHÔNG làm hỏng việc index: nó là tiện ích, còn đưa được vector
@@ -408,7 +412,7 @@ lịch: việc dọn dẹp bám theo lưu lượng thay vì theo đồng hồ.
 | Xoá phiên đã hết hạn | ~5% số lần đăng nhập, ngoài luồng phản hồi |
 | Xoá bộ đếm rate limit của cửa sổ đã qua | như trên |
 | Rút hàng đợi vector mồ côi (`vector_gc`) | như trên |
-| Index ý tưởng chưa được embed | **người dùng bấm nút "Đồng bộ lại index"** |
+| Index ý tưởng chưa được embed | **người dùng bấm nút "Index" của từng mục** |
 
 Việc thứ tư cố ý để thủ công: nó là thứ người dùng nhìn thấy kết quả và biết khi nào
 cần, còn ba việc kia thì không ai quan tâm miễn là chúng có xảy ra.
@@ -532,7 +536,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | POST | `/api/ideas/combine` | ✓ | `{idea_id, variant_id, hook_id?, title?}` → **ý tưởng gốc MỚI** có lineage |
 | GET · POST | `/api/hook-categories` | ✓ | Danh mục hook; trùng tên trả 400 |
 | PATCH · DELETE | `/api/hook-categories/:id` | ✓ | Xoá danh mục KHÔNG xoá hook bên trong |
-| GET · POST | `/api/hooks` | ✓ | `?category=<id>` hoặc `?category=none` |
+| GET · POST | `/api/hooks` | ✓ | `?category=<id>` hoặc `?category=none`; `text` tối đa 2000 ký tự |
 | PATCH · DELETE | `/api/hooks/:id` | ✓ | |
 | POST | `/api/hooks/:id/index` | ✓ | Index đúng hook đó |
 | GET | `/api/ideas/titles` | ✓ | id + tiêu đề mọi ý tưởng cho ô chọn; trần 500 kèm cờ `truncated` |
@@ -548,8 +552,7 @@ Tất cả dưới `/api`. Cột "Auth" = cần cookie phiên hợp lệ.
 | GET | `/api/search` | ✓ | Ngữ nghĩa; lùi về từ khoá khi AI/Vectorize hỏng |
 | GET | `/api/recommendations` | ✓ | `basis: likes \| cold_start` |
 | GET | `/api/tags` | ✓ | |
-| GET | `/api/sync` | ✓ | `dirty` (tổng) + `by_type` cho ý tưởng / biến thể / hook |
-| POST | `/api/reindex` | ✓ | Đồng bộ cả ba kho cho chính mình, lô 50 mỗi loại |
+| GET | `/api/sync` | ✓ | Chỉ đọc: `dirty` (tổng) + `by_type` cho ý tưởng / biến thể / hook |
 | POST | `/api/admin/reindex` | `ADMIN_TOKEN` | `{scope: dirty\|all\|user}` — cũng là công cụ đổi model |
 | POST | `/api/admin/maintenance` | `ADMIN_TOKEN` | Quét toàn bộ một lần: dọn phiên, rate limit, vector mồ côi, đối soát index |
 
@@ -633,8 +636,8 @@ nhánh thiết kế bị loại, vốn dùng `kind` thay cho `type`. Hai index n
 | `videa-db-preview` | 6 user, 5 ý tưởng, 2 biến thể, 2 hook | 5 ý tưởng, 2 biến thể, 2 hook |
 
 Số bẩn ở preview là đúng như thiết kế: `0007` đặt `embedded_hash` của mọi ý tưởng về NULL,
-còn hai bảng mới sinh ra với `content_hash = ''`. Một lần bấm "Đồng bộ index" sau khi deploy
-sẽ rút cạn cả chín mục.
+còn hai bảng mới sinh ra với `content_hash = ''`. Một lượt `POST /api/admin/reindex` sau khi
+deploy sẽ rút cạn cả chín mục (hoặc bấm Index trên từng mục).
 
 ⚠️ **`npm run db:remote` chạy LẠI toàn bộ `migrations/*.sql`, không chỉ file mới.** Trên một
 database đã tồn tại, `0001`–`0005` sẽ lỗi ("table already exists", "duplicate column") rồi

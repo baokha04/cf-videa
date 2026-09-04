@@ -155,6 +155,18 @@ HOOK_ID=$(jqr "$(body "$R")" hook.id)
 R=$(req GET /api/hooks "" "$TOKEN_A")
 expect "GET /api/hooks trả 200" 200 "$(code "$R")"
 
+# Trần độ dài hook là 2000 ký tự, và nó nằm ở tầng validate chứ không ở schema:
+# cột hooks.text là TEXT thuần nên SQLite không chặn gì cả. Kiểm cả hai phía của trần.
+HOOK_LONG=$(python3 -c 'print("a" * 1800)')
+R=$(req POST /api/hooks "{\"text\":\"$HOOK_LONG\"}" "$TOKEN_A")
+expect "hook 1800 ký tự được chấp nhận" 201 "$(code "$R")"
+HOOK_LONG_ID=$(jqr "$(body "$R")" hook.id)
+[ -n "$HOOK_LONG_ID" ] && req DELETE "/api/hooks/$HOOK_LONG_ID" "" "$TOKEN_A" > /dev/null
+
+HOOK_TOOLONG=$(python3 -c 'print("a" * 2001)')
+R=$(req POST /api/hooks "{\"text\":\"$HOOK_TOOLONG\"}" "$TOKEN_A")
+expect "hook 2001 ký tự bị từ chối" 400 "$(code "$R")"
+
 R=$(req POST "/api/ideas/$IDEA_ID/variants" '{"title":"Phiên bản POV","angle":"Góc nhìn người quay"}' "$TOKEN_A")
 expect "tạo biến thể trả 201" 201 "$(code "$R")"
 VAR_ID=$(jqr "$(body "$R")" variant.id)
@@ -328,10 +340,6 @@ echo "     mode=$(jqr "$(body "$R")" mode) (fallback nghĩa là Vectorize/AI ch�
 R=$(req GET /api/recommendations "" "$TOKEN_A")
 expect "GET /api/recommendations trả 200" 200 "$(code "$R")"
 echo "     basis=$(jqr "$(body "$R")" basis)"
-
-R=$(req POST /api/reindex "" "$TOKEN_A")
-expect "POST /api/reindex trả 200" 200 "$(code "$R")"
-echo "     $(body "$R")"
 
 head_ "6b. Ghi nhớ đăng nhập"
 # Cookie có Max-Age = sống qua lần đóng trình duyệt. Không có = cookie phiên.

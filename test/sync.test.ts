@@ -14,7 +14,7 @@ import * as hooksDb from '../src/db/hooks';
 import * as variantsDb from '../src/db/variants';
 import { computeHookHash, computeVariantHash } from '../src/content';
 
-/** Đưa mọi hàng bẩn của user lên Vectorize — đúng đường mà nút đồng bộ chạy. */
+/** Đưa mọi hàng bẩn của user lên Vectorize — đúng đường mà đối soát admin chạy. */
 async function sync(env: Env, uid?: string) {
   return reconcile(env, 100, uid);
 }
@@ -55,7 +55,7 @@ describe('đồng bộ D1 ↔ Vectorize', () => {
     const env = envWith(vec);
     const idea = await ideasDb.create(env, uid, BASE, 'h1');
     expect(vec.store.size).toBe(0);
-    // Nhưng hàng phải hiện ra là "bẩn" để nút đồng bộ thấy nó.
+    // Nhưng hàng phải hiện ra là "bẩn" để lần index sau thấy nó.
     expect(await ideasDb.countDirty(env, uid)).toBe(1);
     expect(idea.id).toBeTruthy();
   });
@@ -377,7 +377,7 @@ describe('index từng mục (nút Index của riêng một hàng)', () => {
     expect(await hooksDb.countDirty(env, uid)).toBe(0);
   });
 
-  it('nút đồng bộ hàng loạt rút cạn cả ba loại trong một lần bấm', async () => {
+  it('đối soát hàng loạt rút cạn cả ba loại trong một lượt', async () => {
     const vec = fakeVectorize();
     const env = envWith(vec);
     const idea = await ideasDb.create(env, uid, BASE, 'h1');

@@ -81,7 +81,7 @@ export async function similar(c: Ctx): Promise<Response> {
     return c.json({
       items: [],
       mode: 'not_indexed',
-      message: 'Ý tưởng này chưa được index. Hãy thử đồng bộ lại rồi quay lại sau ít phút.',
+      message: 'Ý tưởng này chưa được index. Bấm nút "Index" của nó rồi quay lại sau ít phút.',
     });
   }
 

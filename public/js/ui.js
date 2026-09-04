@@ -100,11 +100,8 @@ export function ideaCard(idea) {
  * Cập nhật ĐÚNG thẻ vừa bấm tại chỗ, cố ý không tải lại cả danh sách: trên /search một
  * lần tải lại là một lần nhúng câu truy vấn, tốn lời gọi Workers AI và ăn vào rate
  * limit; trên /recommend thì danh sách nhảy làm mất chỗ đang đọc.
- *
- * onIndexed (tuỳ chọn) dành cho trang còn việc khác phải làm sau đó — /app dùng nó để
- * cập nhật lại số đếm trên thanh đồng bộ.
  */
-export function bindIndexButtons(container, { onMessage, onIndexed } = {}) {
+export function bindIndexButtons(container, { onMessage } = {}) {
   container.addEventListener('click', async (e) => {
     const btn = e.target;
     const id = btn?.dataset?.index;
@@ -132,7 +129,6 @@ export function bindIndexButtons(container, { onMessage, onIndexed } = {}) {
         btn.textContent = label;
         btn.disabled = false;
       }
-      await onIndexed?.();
     } catch (err) {
       onMessage?.(err.message);
       btn.textContent = label;

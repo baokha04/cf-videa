@@ -22,8 +22,8 @@ import {
  * BẤT BIẾN: D1 là nguồn sự thật, vector là sản phẩm dẫn xuất.
  *
  * Tạo và sửa KHÔNG đụng tới Vectorize — chúng chỉ ghi D1, và hàng trở thành "bẩn".
- * Toàn bộ việc index dồn về đây, chạy khi người dùng bấm nút: nút Index của riêng một
- * mục (indexOne) hoặc nút đồng bộ hàng loạt (reconcileAll).
+ * Toàn bộ việc index dồn về đây. Giao diện chỉ đi qua nút Index của riêng từng mục
+ * (indexOne); đối soát hàng loạt (reconcileAll) chỉ còn là đường bảo trì cho admin.
  *
  * Hai cột quyết định một hàng có bẩn hay không — cùng một cặp cột ở cả ba bảng:
  *   embedded_hash     — nội dung đã nhúng lần gần nhất
@@ -313,7 +313,7 @@ export async function reconcileVariants(
   };
 }
 
-/** Nút "Đồng bộ index" chạy cả ba loại. `limit` áp cho TỪNG loại, không phải tổng. */
+/** Đối soát admin chạy cả ba loại. `limit` áp cho TỪNG loại, không phải tổng. */
 export async function reconcileAll(
   env: Env,
   limit: number,

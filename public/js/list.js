@@ -1,4 +1,4 @@
-import { get, post } from './api.js';
+import { get } from './api.js';
 import { $, bindIndexButtons, renderList, show } from './ui.js';
 import { mountNav } from './nav.js';
 
@@ -7,10 +7,6 @@ await mountNav('/app');
 const listEl = $('#list');
 const msgEl = $('#msg');
 const moreBtn = $('#more');
-const reindexBtn = $('#reindex');
-const syncBox = $('#sync');
-const syncTitle = $('#sync-title');
-const syncNote = $('#sync-note');
 
 let cursor = null;
 let items = [];
@@ -40,50 +36,6 @@ async function load(append = false) {
   }
 }
 
-/**
- * Trạng thái đồng bộ hỏi thẳng server, KHÔNG đếm trên danh sách đang hiển thị:
- * danh sách bị phân trang và lọc, nên đếm trên đó sẽ bỏ sót những ý tưởng chưa
- * index nằm ngoài trang hiện tại — và người dùng sẽ tưởng đã đồng bộ xong.
- */
-async function refreshSyncState() {
-  let dirty = null;
-  let byType = null;
-  try {
-    const r = await get('/api/sync');
-    dirty = typeof r.dirty === 'number' ? r.dirty : null;
-    byType = r.by_type ?? null;
-  } catch {
-    dirty = null;
-  }
-
-  if (dirty === null) {
-    syncBox.classList.remove('pending');
-    syncTitle.textContent = 'Không kiểm tra được trạng thái index';
-    syncNote.textContent = 'Vẫn bấm đồng bộ được.';
-    reindexBtn.disabled = false;
-    return dirty;
-  }
-
-  const pending = dirty > 0;
-  syncBox.classList.toggle('pending', pending);
-  // Tách theo loại vì ba kho được index riêng: "3 mục chưa index" mà không nói mục
-  // nào thì người dùng đi tìm khắp ba trang.
-  const parts = [];
-  if (byType) {
-    if (byType.ideas > 0) parts.push(`${byType.ideas} ý tưởng`);
-    if (byType.variants > 0) parts.push(`${byType.variants} biến thể`);
-    if (byType.hooks > 0) parts.push(`${byType.hooks} hook`);
-  }
-  syncTitle.textContent = pending
-    ? `${parts.length ? parts.join(', ') : `${dirty} mục`} chưa được index`
-    : 'Mọi ý tưởng, biến thể và hook đã được index';
-  syncNote.textContent = pending
-    ? 'Chưa tìm được bằng tìm kiếm ngữ nghĩa cho tới khi bạn đồng bộ.'
-    : 'Tìm kiếm ngữ nghĩa đang bám sát dữ liệu.';
-  reindexBtn.disabled = !pending;
-  return dirty;
-}
-
 async function loadTags() {
   try {
     const { tags } = await get('/api/tags');
@@ -111,60 +63,10 @@ moreBtn.addEventListener('click', () => load(true));
  * Nút Index trên từng thẻ ý tưởng — xử lý dùng chung ở ui.js, vì cùng cái nút đó cũng
  * xuất hiện ở /search, /recommend và mục "Ý tưởng tương tự".
  *
- * Đường này KHÁC nút đồng bộ hàng loạt bên dưới: nó index đúng ý tưởng được bấm, và
- * chỉ nó mới trả về cảnh báo trùng.
+ * Đây là đường index DUY NHẤT của giao diện: mỗi ý tưởng tự index bằng nút của nó, và
+ * chỉ đường này mới trả về cảnh báo trùng.
  */
-bindIndexButtons(listEl, {
-  onMessage: (text, kind) => show(msgEl, text, kind),
-  // Số đếm trên thanh đồng bộ vừa đổi, nên phải hỏi lại server.
-  onIndexed: refreshSyncState,
-});
-
-reindexBtn.addEventListener('click', async () => {
-  reindexBtn.disabled = true;
-  show(msgEl, '');
-  let done = 0;
-  let failed = 0;
-  try {
-    // Endpoint xử lý theo lô 50 hàng, nên gọi lặp cho tới khi hết. Giới hạn số vòng
-    // để một lỗi lặp lại không biến thành vòng lặp vô hạn trên trình duyệt.
-    let remaining = Infinity;
-    for (let round = 0; round < 40 && remaining > 0; round++) {
-      const r = await post('/api/reindex');
-      done += r.processed;
-      failed += r.failed;
-      remaining = r.remaining;
-      reindexBtn.textContent = `Đang đồng bộ… (${done})`;
-      // Không tiến thêm được nữa thì dừng, đừng quay vòng vô ích.
-      if (r.processed === 0) break;
-    }
-
-    if (remaining > 0) {
-      show(
-        msgEl,
-        `Đã đồng bộ ${done} mục, còn ${remaining} chưa xong` +
-          (failed > 0 ? ` (${failed} lỗi)` : '') +
-          '. Thử lại sau ít phút.',
-        'note',
-      );
-    } else {
-      // Vector vừa ghi phải mất khoảng một phút mới truy vấn được — nói rõ để người
-      // dùng không tưởng tìm kiếm bị hỏng khi thử ngay lập tức.
-      show(
-        msgEl,
-        `Đã đồng bộ ${done} mục. Tìm kiếm ngữ nghĩa sẽ thấy chúng sau khoảng một phút.`,
-        'ok',
-      );
-    }
-    await refreshSyncState();
-    await load(false);
-  } catch (err) {
-    show(msgEl, err.message);
-    await refreshSyncState();
-  } finally {
-    reindexBtn.textContent = 'Đồng bộ index';
-  }
-});
+bindIndexButtons(listEl, { onMessage: (text, kind) => show(msgEl, text, kind) });
 
 // Đọc bộ lọc từ URL để trang chia sẻ được.
 const initial = new URLSearchParams(location.search);
@@ -175,4 +77,3 @@ for (const id of ['q', 'status', 'platform', 'tag']) {
 
 await loadTags();
 await load(false);
-await refreshSyncState();

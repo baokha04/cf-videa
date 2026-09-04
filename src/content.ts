@@ -53,8 +53,8 @@ export async function computeIdeaHash(env: Env, idea: IdeaRow): Promise<string> 
  * Tính lại và ghi content_hash sau khi có thứ gì đó ảnh hưởng văn bản nhúng thay đổi
  * — sửa tag, hoặc thêm/sửa/xoá biến thể.
  *
- * Không có hàm này thì một biến thể mới sẽ không làm ý tưởng "bẩn", nút đồng bộ sẽ
- * không thấy nó, và tìm kiếm ngữ nghĩa vĩnh viễn không biết biến thể đó tồn tại.
+ * Không có hàm này thì một biến thể mới sẽ không làm ý tưởng "bẩn", nút Index của ý
+ * tưởng coi như đã xong, và tìm kiếm ngữ nghĩa vĩnh viễn không biết biến thể đó tồn tại.
  */
 export async function touchIdeaContent(
   env: Env,
