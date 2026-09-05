@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, bindIndexButtons, bindSubmit, esc, renderList, show } from './ui.js';
+import { $, bindIndexButtons, bindSubmit, esc, renderList, setIcon, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 // Ba thông báo, gom lại một chỗ để chúng không lệch nhau khi sửa.
@@ -19,7 +19,6 @@ const likeBtn = $('#like');
 const delBtn = $('#del');
 const indexBtn = $('#index-one');
 const dupWarn = $('#dup-warn');
-const lineageEl = $('#lineage');
 const variantsLink = $('#to-variants');
 
 let liked = false;
@@ -39,56 +38,6 @@ function readForm() {
   };
 }
 
-/** Một mảnh nguồn gốc: tên kèm liên kết, hoặc "đã bị xoá" khi tra không ra. */
-function lineagePart(obj, label, render) {
-  if (!obj) return `${label} <span class="gone">đã bị xoá</span>`;
-  return `${label} ${render(obj)}`;
-}
-
-/**
- * Nguồn gốc của ý tưởng sinh ra bằng Kết hợp.
- *
- * Ý tưởng gốc và biến thể là BẮT BUỘC lúc kết hợp (POST /api/ideas/combine đòi cả
- * `idea_id` lẫn `variant_id`), nên hai mảnh đó luôn được nêu: vắng mặt chỉ có thể là
- * đã bị xoá, vì cả ba khoá ngoại lineage đều ON DELETE SET NULL. Lặng lẽ bỏ qua mảnh
- * vắng sẽ khiến dòng này đọc như thể ý tưởng ghép thẳng từ ý tưởng gốc, không qua
- * biến thể nào — sai hẳn nguồn gốc thật.
- *
- * Hook thì ngược lại: nó tuỳ chọn, nên `source_hook_id` NULL là "không dùng hook" chứ
- * KHÔNG phải "đã bị xoá", và trường hợp đó không nêu gì cả. Hai chuyện này không thể
- * phân biệt được nữa một khi hook bị xoá, nên chọn cách không nói dối.
- */
-function renderLineage(idea) {
-  const src = idea.source;
-  // Không phải ý tưởng kết hợp thì không có gì để nói — ẩn hẳn thay vì để một khung
-  // rỗng chiếm chỗ trên mọi ý tưởng tự nhập.
-  if (!src) {
-    lineageEl.hidden = true;
-    lineageEl.innerHTML = '';
-    return;
-  }
-
-  const parts = [
-    lineagePart(src.idea, 'ý tưởng gốc',
-      (o) => `<a href="/idea?id=${encodeURIComponent(o.id)}"><strong>${esc(o.title)}</strong></a>`),
-    lineagePart(src.variant, 'biến thể',
-      (o) => `<a href="/variants?idea=${encodeURIComponent(o.idea_id)}">`
-        + `<strong>${esc(o.title)}</strong></a>`),
-  ];
-  if (idea.source_hook_id || src.hook) {
-    parts.push(lineagePart(src.hook, 'hook', (o) => {
-      // Hook có thể dài tới 2000 ký tự — cắt để một dòng nguồn gốc không đẩy cả form
-      // xuống dưới màn hình. Bản đầy đủ nằm ở trang /hooks.
-      const short = o.text.length > 80 ? `${o.text.slice(0, 80)}…` : o.text;
-      const cat = o.category ? `[${esc(o.category)}] ` : '';
-      return `<a href="/hooks">${cat}<strong>${esc(short)}</strong></a>`;
-    }));
-  }
-
-  lineageEl.innerHTML = `Ghép từ ${parts.join(' + ')}.`;
-  lineageEl.hidden = false;
-}
-
 function fill(idea) {
   $('#title').value = idea.title;
   $('#script_outline').value = idea.script_outline;
@@ -98,7 +47,8 @@ function fill(idea) {
   $('#niche').value = idea.niche;
   $('#tags').value = idea.tags.join(', ');
   liked = idea.liked;
-  likeBtn.textContent = liked ? '♥ Bỏ thích' : '♡ Thích';
+  setIcon(likeBtn, 'heart', liked ? 'Bỏ thích' : 'Thích');
+  likeBtn.classList.toggle('liked', liked);
   likeBtn.hidden = false;
   delBtn.hidden = false;
   $('#heading').textContent = idea.title;
@@ -114,15 +64,12 @@ function fill(idea) {
   saveBtn.disabled = false;
   // Đã sạch thì vẫn bấm được, chỉ là không có việc gì để làm. Ghi rõ trên nhãn thay
   // vì vô hiệu hoá nút: nút chết mà không nói lý do là kiểu tệ nhất.
-  indexBtn.textContent = idea.indexed ? 'Index lại ý tưởng này' : 'Index ý tưởng này';
+  setIcon(indexBtn, 'index',
+    idea.indexed ? 'Index lại ý tưởng này' : 'Index ý tưởng này');
 
-  // Chi tiết nguồn gốc nằm ở khối riêng ngay trên form, nên câu ở đây chỉ báo LOẠI.
   if (idea.source_idea_id) {
     $('#sub').textContent += ' Ý tưởng này được tạo bằng chức năng kết hợp.';
   }
-  // `source` chỉ có ở GET /api/ideas/:id. PATCH và POST .../index trả DTO không kèm
-  // nó, nên giữ nguyên khối đang hiện thay vì xoá trắng mỗi lần lưu.
-  if (idea.source !== undefined) renderLineage(idea);
 }
 
 /** Cảnh báo trùng — có liên kết đi tới từng ý tưởng để người dùng tự so. */
@@ -170,7 +117,7 @@ bindSubmit($('#f'), saveBtn, async () => {
     return;
   }
   saveBtn.disabled = true;
-  saveBtn.textContent = 'Đang lưu…';
+  setIcon(saveBtn, 'busy', 'Đang lưu…');
   try {
     const res = isNew
       ? await post('/api/ideas', body)
@@ -187,15 +134,15 @@ bindSubmit($('#f'), saveBtn, async () => {
     show(msg, err.message);
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = 'Lưu';
+    setIcon(saveBtn, 'save', 'Lưu');
   }
 }, { enable: isNew });
 
 if (!isNew) {
   indexBtn.addEventListener('click', async () => {
     indexBtn.disabled = true;
-    const label = indexBtn.textContent;
-    indexBtn.textContent = 'Đang index…';
+    const label = indexBtn.title;
+    setIcon(indexBtn, 'busy', 'Đang index…');
     showDuplicates([]);
     try {
       const res = await post(`/api/ideas/${encodeURIComponent(id)}/index`);
@@ -207,7 +154,7 @@ if (!isNew) {
         res.indexed ? 'ok' : 'note');
     } catch (err) {
       show(msg, err.message);
-      indexBtn.textContent = label;
+      setIcon(indexBtn, 'index', label);
     } finally {
       indexBtn.disabled = false;
     }
@@ -221,7 +168,8 @@ likeBtn.addEventListener('click', async () => {
     if (liked) await del(path);
     else await post(path);
     liked = !liked;
-    likeBtn.textContent = liked ? '♥ Bỏ thích' : '♡ Thích';
+    setIcon(likeBtn, 'heart', liked ? 'Bỏ thích' : 'Thích');
+    likeBtn.classList.toggle('liked', liked);
   } catch (err) {
     show(msg, err.message);
   } finally {

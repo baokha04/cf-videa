@@ -1,5 +1,5 @@
 import { del, get, patch, post } from './api.js';
-import { $, bindSubmit, esc, show } from './ui.js';
+import { $, bindSubmit, btnOf, esc, iconMarkup, setIcon, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 const listEl = $('#list');
@@ -57,7 +57,7 @@ function resetForm() {
   $('#vangle').value = '';
   $('#vscript').value = '';
   $('#videa').disabled = false;
-  $('#vsave').textContent = 'Thêm biến thể';
+  setIcon($('#vsave'), 'plus', 'Thêm biến thể');
   $('#vcancel').hidden = true;
 }
 
@@ -84,9 +84,12 @@ function card(v) {
          title="Chỉ xem biến thể của ý tưởng này">${esc(v.idea_title)}</a>
       <span class="chip">${script}</span>
       ${pending}
-      <button class="link" type="button" data-index="${esc(v.id)}">Index</button>
-      <button class="link" type="button" data-edit="${esc(v.id)}">Sửa</button>
-      <button class="link" type="button" data-del="${esc(v.id)}">Xoá</button>
+      <button class="link" type="button" data-index="${esc(v.id)}"
+              aria-label="Index biến thể này" title="Index biến thể này">${iconMarkup('index')}</button>
+      <button class="link" type="button" data-edit="${esc(v.id)}"
+              aria-label="Sửa biến thể" title="Sửa biến thể">${iconMarkup('edit')}</button>
+      <button class="link" type="button" data-del="${esc(v.id)}"
+              aria-label="Xoá biến thể" title="Xoá biến thể">${iconMarkup('trash')}</button>
     </div>
   </article>`;
 }
@@ -169,7 +172,8 @@ bindSubmit($('#filters'), $('#vfilter-go'), () => {
 moreBtn.addEventListener('click', () => load(true));
 
 listEl.addEventListener('click', async (e) => {
-  const editId = e.target?.dataset?.edit;
+  const btn = btnOf(e);
+  const editId = btn?.dataset?.edit;
   if (editId) {
     const v = items.find((x) => x.id === editId);
     if (!v) return;
@@ -181,7 +185,7 @@ listEl.addEventListener('click', async (e) => {
     // Vẫn hiện đúng ý tưởng hiện tại, nhưng khoá lại thay vì để người dùng đổi hụt.
     if ([...$('#videa').options].some((o) => o.value === v.idea_id)) $('#videa').value = v.idea_id;
     $('#videa').disabled = true;
-    $('#vsave').textContent = 'Lưu thay đổi';
+    setIcon($('#vsave'), 'save', 'Lưu thay đổi');
     $('#vcancel').hidden = false;
     show(vmsg, `Đang sửa "${v.title}". Ý tưởng gốc không đổi được ở đây.`, 'note');
     $('#vtitle').focus();
@@ -189,10 +193,10 @@ listEl.addEventListener('click', async (e) => {
     return;
   }
 
-  const indexId = e.target?.dataset?.index;
+  const indexId = btn?.dataset?.index;
   if (indexId) {
-    e.target.disabled = true;
-    e.target.textContent = '…';
+    btn.disabled = true;
+    setIcon(btn, 'busy', 'Đang index…');
     try {
       const r = await post(`/api/variants/${encodeURIComponent(indexId)}/index`);
       show(msgEl, r.indexed
@@ -207,7 +211,7 @@ await load(false);
     return;
   }
 
-  const delId = e.target?.dataset?.del;
+  const delId = btn?.dataset?.del;
   if (delId) {
     if (!confirm('Xoá biến thể này? Ý tưởng gốc vẫn được giữ nguyên.')) return;
     try {

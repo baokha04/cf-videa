@@ -1,5 +1,5 @@
-import { del, get, post, put } from './api.js';
-import { $, bindSubmit, esc, show } from './ui.js';
+import { del, get, post } from './api.js';
+import { $, bindSubmit, btnOf, esc, iconMarkup, setIcon, show } from './ui.js';
 import { mountNavSafe } from './nav.js';
 
 function fmtWhen(ms) {
@@ -38,7 +38,8 @@ async function loadSessions() {
           <td>${
             s.current
               ? ''
-              : `<button class="link" type="button" data-revoke="${esc(s.id)}">Thu hồi</button>`
+              : `<button class="link" type="button" data-revoke="${esc(s.id)}"
+                     aria-label="Thu hồi phiên này" title="Thu hồi phiên này">${iconMarkup('revoke')}</button>`
           }</td>
         </tr>`,
       )
@@ -51,9 +52,9 @@ async function loadSessions() {
 // Uỷ quyền sự kiện: CSP chặn onclick nội tuyến, và cách này sống sót qua mỗi lần
 // render lại bảng.
 $('#sessions').addEventListener('click', async (e) => {
-  const id = e.target?.dataset?.revoke;
+  const id = btnOf(e)?.dataset?.revoke;
   if (!id) return;
-  e.target.disabled = true;
+  btnOf(e).disabled = true;
   try {
     await del(`/api/auth/sessions/${encodeURIComponent(id)}`);
     await loadSessions();
@@ -62,57 +63,11 @@ $('#sessions').addEventListener('click', async (e) => {
   }
 });
 
-// --- Mẫu prompt ------------------------------------------------------------
-
-async function loadTemplate() {
-  try {
-    const t = await get('/api/prompt-template');
-    $('#tpl').value = t.body;
-    $('#tplvars').textContent = t.variables.map((v) => `{{${v}}}`).join('  ');
-    if (t.unknown.length) {
-      show($('#tplmsg'),
-        `Mẫu đang có biến không nhận biết được: ${t.unknown.join(', ')}. `
-        + 'Chúng sẽ xuất hiện nguyên văn trong prompt.', 'note');
-    }
-  } catch (err) {
-    show($('#tplmsg'), err.message);
-  }
-}
-
-$('#tplsave').addEventListener('click', async () => {
-  const btn = $('#tplsave');
-  btn.disabled = true;
-  try {
-    const r = await put('/api/prompt-template', { body: $('#tpl').value });
-    show($('#tplmsg'),
-      r.unknown.length
-        ? `Đã lưu, nhưng có biến không nhận biết được: ${r.unknown.join(', ')}. `
-          + 'Kiểm tra lại xem có gõ sai không.'
-        : 'Đã lưu mẫu prompt.',
-      r.unknown.length ? 'note' : 'ok');
-  } catch (err) {
-    show($('#tplmsg'), err.message);
-  } finally {
-    btn.disabled = false;
-  }
-});
-
-$('#tplreset').addEventListener('click', async () => {
-  if (!confirm('Đưa mẫu về mặc định? Mẫu bạn đang sửa sẽ mất.')) return;
-  try {
-    const r = await del('/api/prompt-template');
-    $('#tpl').value = r.body;
-    show($('#tplmsg'), 'Đã đưa về mẫu mặc định.', 'ok');
-  } catch (err) {
-    show($('#tplmsg'), err.message);
-  }
-});
-
 bindSubmit($('#pw'), $('#pwsave'), async () => {
   const btn = $('#pwsave');
   show($('#pwmsg'), '');
   btn.disabled = true;
-  btn.textContent = 'Đang đổi…';
+  setIcon(btn, 'busy', 'Đang đổi…');
   try {
     const res = await post('/api/auth/change-password', {
       current_password: $('#current_password').value,
@@ -129,7 +84,7 @@ bindSubmit($('#pw'), $('#pwsave'), async () => {
     show($('#pwmsg'), err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Đổi mật khẩu';
+    setIcon(btn, 'key', 'Đổi mật khẩu');
   }
 });
 
@@ -151,7 +106,6 @@ $('#logout').addEventListener('click', async () => {
   }
 });
 
-await loadTemplate();
 await loadSessions();
 
 // Thanh điều hướng dựng SAU CÙNG, sau khi mọi trình xử lý ở trên đã gắn.

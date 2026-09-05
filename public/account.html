@@ -31,29 +31,10 @@
       </p>
 
       <div class="actions">
-        <button class="primary" type="submit" id="pwsave" disabled>Đổi mật khẩu</button>
+        <button class="primary" type="submit" id="pwsave" disabled aria-label="Đổi mật khẩu" title="Đổi mật khẩu"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg></button>
       </div>
     </form>
     <p id="pwmsg" class="msg"></p>
-  </div>
-
-  <h2>Mẫu prompt</h2>
-  <div class="card">
-    <p class="small muted">
-      Prompt được ghép từ mẫu này, thay các biến bằng dữ liệu của ý tưởng gốc, hook và
-      biến thể bạn chọn. Nhãn cấu trúc để tiếng Anh vì công cụ video AI nhận diện tốt
-      hơn; nội dung bạn nhập giữ nguyên tiếng Việt.
-    </p>
-    <p class="small muted">Biến dùng được: <span id="tplvars" class="mono"></span></p>
-
-    <label for="tpl">Mẫu</label>
-    <textarea id="tpl" class="mono tall" maxlength="20000"></textarea>
-
-    <div class="actions">
-      <button class="primary" type="button" id="tplsave">Lưu mẫu</button>
-      <button type="button" id="tplreset">Về mẫu mặc định</button>
-    </div>
-    <p id="tplmsg" class="msg"></p>
   </div>
 
   <h2>Phiên đăng nhập</h2>
@@ -65,8 +46,8 @@
       <tbody id="sessions"><tr><td colspan="3" class="muted">Đang tải…</td></tr></tbody>
     </table>
     <div class="actions">
-      <button type="button" id="revokeall">Đăng xuất mọi thiết bị khác</button>
-      <button type="button" id="logout" class="danger">Đăng xuất</button>
+      <button type="button" id="revokeall" aria-label="Đăng xuất mọi thiết bị khác" title="Đăng xuất mọi thiết bị khác"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></button>
+      <button type="button" id="logout" class="danger" aria-label="Đăng xuất" title="Đăng xuất"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg></button>
     </div>
     <p id="smsg" class="msg"></p>
   </div>

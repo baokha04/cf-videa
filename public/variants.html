@@ -44,8 +44,8 @@
       <textarea id="vscript" maxlength="8000"></textarea>
 
       <div class="actions">
-        <button class="primary" type="submit" id="vsave" disabled>Thêm biến thể</button>
-        <button type="button" id="vcancel" hidden>Huỷ sửa</button>
+        <button class="primary" type="submit" id="vsave" disabled aria-label="Thêm biến thể" title="Thêm biến thể"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button type="button" id="vcancel" hidden aria-label="Huỷ sửa" title="Huỷ sửa"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       </div>
     </form>
     <p id="vmsg" class="msg"></p>
@@ -61,7 +61,7 @@
         </div>
         <div class="shrink">
           <label>&nbsp;</label>
-          <button type="submit" id="vfilter-go" disabled>Tìm</button>
+          <button type="submit" id="vfilter-go" disabled aria-label="Tìm" title="Tìm"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></button>
         </div>
       </div>
     </form>
@@ -71,7 +71,7 @@
 
   <p id="msg" class="msg"></p>
   <div id="list" class="list"><p class="empty">Đang tải…</p></div>
-  <div class="actions"><button id="more" type="button" hidden>Tải thêm</button></div>
+  <div class="actions"><button id="more" type="button" hidden aria-label="Tải thêm" title="Tải thêm"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>
 </main>
 <script type="module" src="/js/variants.js"></script>
 </body>

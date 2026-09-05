@@ -287,22 +287,6 @@ expect "ý tưởng kết hợp kế thừa negative prompt" "không nhạc bả
 R=$(req GET "/api/ideas/$COMBO_ID" "" "$TOKEN_A")
 expect "ý tưởng kết hợp thật sự nằm trong kho" 200 "$(code "$R")"
 
-# `source` tra sẵn TÊN cho ba khoá ngoại lineage — chỉ có id thì trang /idea không
-# hiện được nguồn gốc, và đó chính là lỗi khối này khoá lại.
-expect "GET một ý tưởng kèm tên ý tưởng nguồn" "5 mẹo quay video bằng điện thoại" \
-  "$(jqr "$(body "$R")" idea.source.idea.title)"
-expect "GET một ý tưởng kèm tên biến thể nguồn" "Phiên bản POV" \
-  "$(jqr "$(body "$R")" idea.source.variant.title)"
-expect "GET một ý tưởng kèm nội dung hook nguồn" "Bạn đang cầm máy sai cách!" \
-  "$(jqr "$(body "$R")" idea.source.hook.text)"
-expect "biến thể nguồn kèm idea_id để dựng liên kết" "$IDEA_ID" \
-  "$(jqr "$(body "$R")" idea.source.variant.idea_id)"
-
-# Ý tưởng TỰ NHẬP phải có source = null, nếu không giao diện sẽ hiện khối nguồn gốc
-# rỗng trên mọi ý tưởng.
-R=$(req GET "/api/ideas/$IDEA_ID" "" "$TOKEN_A")
-expect "ý tưởng tự nhập có source rỗng" "null" "$(jqr "$(body "$R")" idea.source)"
-
 R=$(req POST /api/ideas/combine \
      "{\"idea_id\":\"$COMBO_ID\",\"variant_id\":\"$VAR_ID\"}" "$TOKEN_A")
 expect "biến thể của ý tưởng khác bị từ chối" 400 "$(code "$R")"

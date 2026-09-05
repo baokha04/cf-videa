@@ -51,7 +51,7 @@
         </div>
         <div class="shrink">
           <label>&nbsp;</label>
-          <button type="submit" id="filter-go" disabled>Lọc</button>
+          <button type="submit" id="filter-go" disabled aria-label="Lọc" title="Lọc"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg></button>
         </div>
       </div>
       <p class="small muted spaced">
@@ -62,12 +62,12 @@
   </div>
 
   <div class="actions">
-    <a href="/idea"><button class="primary" type="button">+ Ý tưởng mới</button></a>
+    <a href="/idea"><button class="primary" type="button" aria-label="Ý tưởng mới" title="Ý tưởng mới"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></a>
   </div>
 
   <p id="msg" class="msg"></p>
   <div id="list" class="list"><p class="empty">Đang tải…</p></div>
-  <div class="actions"><button id="more" type="button" hidden>Tải thêm</button></div>
+  <div class="actions"><button id="more" type="button" hidden aria-label="Tải thêm" title="Tải thêm"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button></div>
 </main>
 <script type="module" src="/js/list.js"></script>
 </body>
